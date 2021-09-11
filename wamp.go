@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	client2 "github.com/gammazero/nexus/client"
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/wamp"
 	"log"
@@ -23,12 +22,7 @@ func subscribe(URLSub string, realmSub string, topicSub string){
 	if err != nil {
 		logger.Fatal(err)
 	}
-	defer func(subscriber *client2.Client) {
-		err := subscriber.Close()
-		if err != nil {
-			println(err)
-		}
-	}(subscriber)
+	defer subscriber.Close()
 
 	// Define function to handle events received.
 	eventHandler := func(event *wamp.Event) {
@@ -74,12 +68,7 @@ func publish(URLPub string, realmPub string, topicPub string, argsList wamp.List
 	if err != nil {
 		logger.Fatal(err)
 	}
-	defer func(publisher *client2.Client) {
-		err := publisher.Close()
-		if err != nil {
-			println(err)
-		}
-	}(publisher)
+	defer publisher.Close()
 
 	// Publish to topic.
 	err = publisher.Publish(topicPub, nil,argsList, nil)
@@ -100,12 +89,7 @@ func register(URLReg string, realmReg string, procedureReg string){
 	if err != nil {
 		logger.Fatal(err)
 	}
-	defer func(register *client2.Client) {
-		err := register.Close()
-		if err != nil {
-			println(err)
-		}
-	}(register)
+	defer register.Close()
 
 	eventHandler:= func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
 		fmt.Println(inv.Arguments,inv.ArgumentsKw)
@@ -150,12 +134,7 @@ func call(URLCal string, realmCal string, procedureCal string, argsList wamp.Lis
 	if err != nil {
 		logger.Fatal(err)
 	}
-	defer func(caller *client2.Client) {
-		err := caller.Close()
-		if err != nil {
-			println(err)
-		}
-	}(caller)
+	defer caller.Close()
 
 	ctx := context.Background()
 

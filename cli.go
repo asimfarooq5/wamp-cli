@@ -13,6 +13,7 @@ var (
 	urlArgPub   = publishCommand.Arg("url", "url").Required().String()
 	realmArgPub = publishCommand.Arg("realm", "realmSub").Required().String()
 	topicArgPub = publishCommand.Arg("topic", "topic name").Required().String()
+	argumentsFlagPub = publishCommand.Flag("arguments","for giving arguments").Short('a').Strings()
 
 	registerCommand  = kingpin.Command("register", "registering a procedure.")
 	urlArgReg   = registerCommand.Arg("url", "url").Required().String()
