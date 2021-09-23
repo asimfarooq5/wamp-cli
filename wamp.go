@@ -1,13 +1,38 @@
+//MIT License
+//
+//Copyright (c) 2021 CODEBASE
+//
+//Permission is hereby granted, free of charge, to any person obtaining a copy
+//of this software and associated documentation files (the "Software"), to deal
+//in the Software without restriction, including without limitation the rights
+//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//copies of the Software, and to permit persons to whom the Software is
+//furnished to do so, subject to the following conditions:
+//
+//The above copyright notice and this permission notice shall be included in all
+//copies or substantial portions of the Software.
+//
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//SOFTWARE.
+
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/wamp"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
+	"strings"
 )
 
 func subscribe(URLSub string, realmSub string, topicSub string){
@@ -111,7 +136,7 @@ func publish(URLPub string, realmPub string, topicPub string, argsList []string,
 	}
 }
 
-func register(URLReg string, realmReg string, procedureReg string){
+func register(URLReg string, realmReg string, procedureReg string, commands []string, shell string){
 	logger := log.New(os.Stdout, "Register> ", 0)
 	cfg := client.Config{
 		Realm:  realmReg,
@@ -122,6 +147,7 @@ func register(URLReg string, realmReg string, procedureReg string){
 	if err != nil {
 		logger.Fatal(err)
 	}
+
 	defer register.Close()
 
 	eventHandler:= func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
@@ -134,7 +160,7 @@ func register(URLReg string, realmReg string, procedureReg string){
 					fmt.Println(value)
 				}
 			}
-		}else{
+		} else {
 			fmt.Println("args : {}")
 		}
 		i := 1
@@ -151,12 +177,37 @@ func register(URLReg string, realmReg string, procedureReg string){
 		} else {
 			fmt.Println("kwargs : {}")
 		}
-		return client.InvokeResult{Args: wamp.List{inv.Arguments}}
+
+		if commands != nil {
+			var command string
+			for _,com := range commands{
+				if command != "" {
+					command = command + "; " + com
+				} else {
+					command = command + com
+				}
+			}
+
+			err, out, _ := shellOut(command,shell)
+			if err != nil {
+				log.Println("error: ", err)
+			}
+
+			return client.InvokeResult{Args: wamp.List{out}}
+		} else if shell != "" && commands == nil {
+			err, out, _ := execute(shell)
+			if err != nil {
+				log.Println("error: ", err)
+			}
+			return client.InvokeResult{Args: wamp.List{out}}
+		}
+
+		return client.InvokeResult{Args: wamp.List{""}}
 	}
 
 	if err = register.Register(procedureReg, eventHandler, nil);
 		err != nil {
-		logger.Fatal("Failed to publish procedure:", err)
+		logger.Fatal("Failed to register procedure:", err)
 	} else {
 		logger.Println("Registered procedure", procedureReg, "with router")
 	}
@@ -209,7 +260,37 @@ func call(URLCal string, realmCal string, procedureCal string, argsList []string
 	result, err := caller.Call(ctx, procedureCal, nil, arguments, keywordArguments, nil)
 	if err != nil {
 		logger.Println("Failed to call ", err)
-	} else if result != nil{
-		logger.Println("Call the procedure ", procedureCal)
+	} else if result != nil {
+		fmt.Println(result.Arguments[0])
 	}
+}
+
+func shellOut(command string, ShellToUse string) (error, string, string) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var cmd *exec.Cmd
+	if strings.HasSuffix(command, ".sh") || strings.HasSuffix(command, ".py"){
+		cmd = exec.Command(ShellToUse, command)
+	} else {
+		fmt.Println(command, ShellToUse)
+		cmd = exec.Command(ShellToUse, "-c" , command)
+	}
+
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return err, stdout.String(), stderr.String()
+}
+
+func execute(command string) (error, string, string) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	var cmd *exec.Cmd
+
+	cmd = exec.Command(command)
+
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return err, stdout.String(), stderr.String()
 }
