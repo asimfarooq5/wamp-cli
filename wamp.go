@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	client2 "github.com/gammazero/nexus/client"
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/wamp"
 	"log"
@@ -40,6 +41,7 @@ func subscribe(URLSub string, realmSub string, topicSub string){
 	cfg := client.Config{
 		Realm:  realmSub,
 		Logger: logger,
+		AuthHandlers: map[string]client2.AuthFunc{},
 	}
 
 	// Connect subscriber session.
@@ -272,7 +274,6 @@ func shellOut(command string, ShellToUse string) (error, string, string) {
 	if strings.HasSuffix(command, ".sh") || strings.HasSuffix(command, ".py"){
 		cmd = exec.Command(ShellToUse, command)
 	} else {
-		fmt.Println(command, ShellToUse)
 		cmd = exec.Command(ShellToUse, "-c" , command)
 	}
 
