@@ -31,9 +31,8 @@ var (
 	subscribeCommand = kingpin.Command("subscribe", "subscribe a topic.")
 	URLFlag = kingpin.Flag("url", "A WAMP URL to connect to, like ws://127.0.0.1:8080/ws or rs://localhost:1234").Required().Short('u').String()
 	realmFlag = kingpin.Flag("realm", "The realm to join").Required().Short('r').String()
-	privateKeyFlag = kingpin.Flag("private-key","Hex-encoded private key").String()
 	authidFlag = kingpin.Flag("authid","The authid to use, if authenticating").String()
-	authRoleFlag = kingpin.Flag("authrole", "The role to use, if authenticating").String()
+	authSecretFlag = kingpin.Flag("secret", "The secret to use in CRAuthentication.").String()
 
 	topicArgSub  = subscribeCommand.Arg("topic", "topic name").Required().String()
 
@@ -59,24 +58,24 @@ var (
 func main() {
 	switch kingpin.Parse() {
 		case "subscribe":
-			subscribe(*URLFlag, *realmFlag, *topicArgSub)
+			subscribe(*URLFlag, *realmFlag, *topicArgSub, *authidFlag, *authSecretFlag)
 		case "publish":
-			publish(*URLFlag, *realmFlag, *topicArgPub, *argumentsArgPub, *kwArgsFlagPub)
+			publish(*URLFlag, *realmFlag, *topicArgPub, *argumentsArgPub, *kwArgsFlagPub, *authidFlag, *authSecretFlag)
 		case "register":
 			if *bashFlagReg != nil && *shellFlagReg == nil && *pythonFlagReg == nil && *execFlagReg == "" {
-				register(*URLFlag, *realmFlag, *topicArgReg, *bashFlagReg,"bash")
+				register(*URLFlag, *realmFlag, *topicArgReg, *bashFlagReg,"bash",*authidFlag, *authSecretFlag)
 			} else if *shellFlagReg != nil && *bashFlagReg == nil && *pythonFlagReg ==nil && *execFlagReg == "" {
-				register(*URLFlag, *realmFlag, *topicArgReg, *shellFlagReg,"sh")
+				register(*URLFlag, *realmFlag, *topicArgReg, *shellFlagReg,"sh",*authidFlag, *authSecretFlag)
 			} else if *pythonFlagReg != nil && *bashFlagReg == nil && *shellFlagReg == nil && *execFlagReg == "" {
-				register(*URLFlag, *realmFlag, *topicArgReg, *pythonFlagReg,"python3")
+				register(*URLFlag, *realmFlag, *topicArgReg, *pythonFlagReg,"python3",*authidFlag, *authSecretFlag)
 			} else if execFlagReg != nil && *bashFlagReg == nil && *shellFlagReg == nil && *pythonFlagReg ==nil {
-				register(*URLFlag, *realmFlag, *topicArgReg, nil, *execFlagReg)
+				register(*URLFlag, *realmFlag, *topicArgReg, nil, *execFlagReg,*authidFlag, *authSecretFlag)
 			} else if *bashFlagReg == nil && *shellFlagReg == nil && *pythonFlagReg == nil && *execFlagReg == "" {
-				register(*URLFlag, *realmFlag, *topicArgReg, nil,"")
+				register(*URLFlag, *realmFlag, *topicArgReg, nil,"",*authidFlag, *authSecretFlag)
 			}else {
 				fmt.Println("Please use one type for running script")
 			}
 		case "call":
-			call(*URLFlag, *realmFlag, *topicArgCal, *argumentsArgCal, *kwArgsFlagCal)
+			call(*URLFlag, *realmFlag, *topicArgCal, *argumentsArgCal, *kwArgsFlagCal,*authidFlag, *authSecretFlag )
 	}
 }
