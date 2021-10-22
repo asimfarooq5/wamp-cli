@@ -39,17 +39,17 @@ import (
 
 var goodSecret string
 
-func Subscribe(URLSub string, realmSub string, topicSub string,  authidFlag string, authSecretFlag string) {
+func Subscribe(url string, realm string, topic string,  authid string, authSecret string) {
 	logger := log.New(os.Stdout, "Subscriber> ", 0)
 
-	cfg := config(realmSub, authidFlag, authSecretFlag, logger)
+	cfg := getConfig(realm, authid, authSecret, logger)
 
 	// Connect subscriber session.
-	subscriber, err := client.ConnectNet(context.Background(), URLSub, cfg)
+	subscriber, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
 		logger.Fatal(err)
 	} else {
-		logger.Println("Connected to ", URLSub)
+		logger.Println("Connected to ", url)
 	}
 	defer subscriber.Close()
 
@@ -59,11 +59,11 @@ func Subscribe(URLSub string, realmSub string, topicSub string,  authidFlag stri
 	}
 
 	// Subscribe to topic.
-	err = subscriber.Subscribe(topicSub, eventHandler, nil)
+	err = subscriber.Subscribe(topic, eventHandler, nil)
 	if err != nil {
 		logger.Fatal("subscribe error:", err)
 	} else {
-		logger.Println("Subscribed to", topicSub)
+		logger.Println("Subscribed to", topic)
 	}
 	// Wait for CTRL-c or client close while handling events.
 	sigChan := make(chan os.Signal, 1)
@@ -76,41 +76,40 @@ func Subscribe(URLSub string, realmSub string, topicSub string,  authidFlag stri
 	}
 
 	// Unsubscribe from topic.
-	if err = subscriber.Unsubscribe(topicSub); err != nil {
+	if err = subscriber.Unsubscribe(topic); err != nil {
 		logger.Println("Failed to unsubscribe:", err)
 	}
 }
 
-func Publish(URLPub string, realmPub string, topicPub string, argsList []string, kwargsMap map[string]string,
+func Publish(url string, realm string, topic string, args []string, kwargs map[string]string,
 	authidFlag string, authSecretFlag string) {
 	logger := log.New(os.Stdout, "Publisher> ", 0)
 
-	cfg := config(realmPub, authidFlag, authSecretFlag, logger)
+	cfg := getConfig(realm, authidFlag, authSecretFlag, logger)
 
 	// Connect publisher session.
-	publisher, err := client.ConnectNet(context.Background(), URLPub, cfg)
+	publisher, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
 		logger.Fatal(err)
 	}
 	defer publisher.Close()
 
 	// Publish to topic.
-	err = publisher.Publish(topicPub, nil, listToWampList(argsList), dictToWampDict(kwargsMap))
+	err = publisher.Publish(topic, nil, listToWampList(args), dictToWampDict(kwargs))
 	if err != nil {
 		logger.Fatal("publish error:", err)
 	} else {
-		logger.Println("Published", topicPub, "event")
+		logger.Println("Published", topic, "event")
 	}
 }
 
-func Register(URLReg string, realmReg string, procedureReg string, commands []string, shell string,
-	authidFlag string, authSecretFlag string) {
+func Register(url string, realm string, procedure string, commands []string, shell string, authid string, authSecret string) {
 	logger := log.New(os.Stdout, "Register> ", 0)
 
-	cfg := config(realmReg, authidFlag, authSecretFlag, logger)
+	cfg := getConfig(realm, authid, authSecret, logger)
 
-	register, err := client.ConnectNet(context.Background(), URLReg, cfg)
-	logger.Println("Connected to ", URLReg)
+	register, err := client.ConnectNet(context.Background(), url, cfg)
+	logger.Println("Connected to ", url)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -148,11 +147,11 @@ func Register(URLReg string, realmReg string, procedureReg string, commands []st
 		return client.InvokeResult{Args: wamp.List{""}}
 	}
 
-	if err = register.Register(procedureReg, eventHandler, nil);
+	if err = register.Register(procedure, eventHandler, nil);
 		err != nil {
 		logger.Fatal("Failed to register procedure:", err)
 	} else {
-		logger.Println("Registered procedure", procedureReg, "with router")
+		logger.Println("Registered procedure", procedure, "with router")
 	}
 
 	// Wait for CTRL-c or client close while handling remote procedure calls.
@@ -165,7 +164,7 @@ func Register(URLReg string, realmReg string, procedureReg string, commands []st
 		return // router gone, just exit
 	}
 
-	if err = register.Unregister(procedureReg); err != nil {
+	if err = register.Unregister(procedure); err != nil {
 		logger.Println("Failed to unregister procedure:", err)
 	}
 
@@ -173,14 +172,15 @@ func Register(URLReg string, realmReg string, procedureReg string, commands []st
 
 }
 
-func Call(URLCal string, realmCal string, procedureCal string, argsList []string, kwargsMap map[string]string,
-	authidFlag string, authSecretFlag string) {
+func Call(url string, realm string, procedure string, args []string, kwargs map[string]string, authid string,
+	authSecret string) {
+
 	logger := log.New(os.Stderr, "Caller> ", 0)
 
-	cfg := config(realmCal, authidFlag, authSecretFlag, logger)
+	cfg := getConfig(realm, authid, authSecret, logger)
 
 	// Connect caller client
-	caller, err := client.ConnectNet(context.Background(), URLCal, cfg)
+	caller, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func Call(URLCal string, realmCal string, procedureCal string, argsList []string
 
 	ctx := context.Background()
 
-	result, err := caller.Call(ctx, procedureCal, nil, listToWampList(argsList), dictToWampDict(kwargsMap), nil)
+	result, err := caller.Call(ctx, procedure, nil, listToWampList(args), dictToWampDict(kwargs), nil)
 	if err != nil {
 		logger.Println("Failed to call ", err)
 	} else if result != nil {
@@ -196,28 +196,28 @@ func Call(URLCal string, realmCal string, procedureCal string, argsList []string
 	}
 }
 
-func clientAuthFunc(c *wamp.Challenge) (string, wamp.Dict) {
+func CRAAuthFunction(c *wamp.Challenge) (string, wamp.Dict) {
 	sig := crsign.RespondChallenge(goodSecret, c, nil)
 	return sig, wamp.Dict{}
 }
 
-func listToWampList(argsList []string) wamp.List {
+func listToWampList(args []string) wamp.List {
 	var arguments wamp.List
-	for _, value := range argsList {
+	for _, value := range args {
 		arguments = append(arguments, value)
 	}
 	return arguments
 }
 
-func dictToWampDict(kwargsMap map[string]string) wamp.Dict {
+func dictToWampDict(kwargs map[string]string) wamp.Dict {
 	var keywordArguments wamp.Dict = make(map[string]interface{})
-	for key, value := range kwargsMap {
+	for key, value := range kwargs {
 		keywordArguments[key] = value
 	}
 	return keywordArguments
 }
 
-func config(realm string, authidFlag string, authSecretFlag string, logger *log.Logger) client.Config{
+func getConfig(realm string, authidFlag string, authSecretFlag string, logger *log.Logger) client.Config {
 	var cfg client.Config
 	if authidFlag != "" && authSecretFlag != "" {
 		cfg = client.Config{
@@ -227,7 +227,7 @@ func config(realm string, authidFlag string, authSecretFlag string, logger *log.
 				"authid": authidFlag,
 			},
 			AuthHandlers: map[string]client.AuthFunc{
-				"wampcra": clientAuthFunc,
+				"wampcra": CRAAuthFunction,
 			},
 		}
 	} else {
