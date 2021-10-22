@@ -1,44 +1,45 @@
-//MIT License
+// MIT License
 //
-//Copyright (c) 2021 CODEBASE
+// Copyright (c) 2021 CODEBASE
 //
-//Permission is hereby granted, free of charge, to any person obtaining a copy
-//of this software and associated documentation files (the "Software"), to deal
-//in the Software without restriction, including without limitation the rights
-//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-//copies of the Software, and to permit persons to whom the Software is
-//furnished to do so, subject to the following conditions:
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
 //
-//The above copyright notice and this permission notice shall be included in all
-//copies or substantial portions of the Software.
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
 //
-//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-//SOFTWARE.
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
-package main
+package wamp
 
 import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/gammazero/nexus/v3/client"
-	"github.com/gammazero/nexus/v3/wamp"
-	"github.com/gammazero/nexus/v3/wamp/crsign"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strings"
+
+	"github.com/gammazero/nexus/v3/client"
+	"github.com/gammazero/nexus/v3/wamp"
+	"github.com/gammazero/nexus/v3/wamp/crsign"
 )
 
 var goodSecret string
 
-func subscribe(URLSub string, realmSub string, topicSub string,  authidFlag string, authSecretFlag string) {
+func Subscribe(URLSub string, realmSub string, topicSub string,  authidFlag string, authSecretFlag string) {
 	logger := log.New(os.Stdout, "Subscriber> ", 0)
 
 	cfg := config(realmSub, authidFlag, authSecretFlag, logger)
@@ -80,7 +81,7 @@ func subscribe(URLSub string, realmSub string, topicSub string,  authidFlag stri
 	}
 }
 
-func publish(URLPub string, realmPub string, topicPub string, argsList []string, kwargsMap map[string]string,
+func Publish(URLPub string, realmPub string, topicPub string, argsList []string, kwargsMap map[string]string,
 	authidFlag string, authSecretFlag string) {
 	logger := log.New(os.Stdout, "Publisher> ", 0)
 
@@ -102,7 +103,7 @@ func publish(URLPub string, realmPub string, topicPub string, argsList []string,
 	}
 }
 
-func register(URLReg string, realmReg string, procedureReg string, commands []string, shell string,
+func Register(URLReg string, realmReg string, procedureReg string, commands []string, shell string,
 	authidFlag string, authSecretFlag string) {
 	logger := log.New(os.Stdout, "Register> ", 0)
 
@@ -172,7 +173,7 @@ func register(URLReg string, realmReg string, procedureReg string, commands []st
 
 }
 
-func call(URLCal string, realmCal string, procedureCal string, argsList []string, kwargsMap map[string]string,
+func Call(URLCal string, realmCal string, procedureCal string, argsList []string, kwargsMap map[string]string,
 	authidFlag string, authSecretFlag string) {
 	logger := log.New(os.Stderr, "Caller> ", 0)
 
