@@ -35,14 +35,14 @@ var (
 	realm          = kingpin.Flag("realm", "The WAMP realm to join").Default("realm1").Envar("WICK_REALM").String()
 	authmethod     = kingpin.Flag("authmethod","The authentication method to use").Envar("WICK_AUTHMETHOD").
 		Enum("ticket", "wampcra", "cryptosign")
-	authid         = kingpin.Flag("authid","The authid to use, if authenticating").String()
-	authrole       = kingpin.Flag("authrole","The authrole to use, if authenticating").String()
+	authid         = kingpin.Flag("authid","The authid to use, if authenticating").Envar("WICK_AUTHID").String()
+	authrole       = kingpin.Flag("authrole","The authrole to use, if authenticating").Envar("WICK_AUTHROLE").String()
 	secret         = kingpin.Flag("secret", "The secret to use in Challenge-Response Auth.").
 		Envar("WICK_CRA_SECRET").String()
 	privateKey     = kingpin.Flag("private-key", "The ed25519 private key hex for cryptosign").
-		Envar("WICK_PRIVATE_KEY").String()
-	publicKey      = kingpin.Flag("private-key", "The ed25519 private key hex for cryptosign").
-		Envar("WICK_PUBLIC_KEY").String()
+		Envar("WICK_CRYPTOSIGN_PRIVATE_KEY").String()
+	publicKey      = kingpin.Flag("private-key", "The ed25519 public key hex for cryptosign").
+		Envar("WICK_CRYPTOSIGN_PUBLIC_KEY").String()
 	ticket         = kingpin.Flag("ticket", "The ticket when when ticket authentication").Envar("WICK_TICKET").String()
 	authExtra      = kingpin.Flag("authextra", "The authentication extras").StringMap()
 
