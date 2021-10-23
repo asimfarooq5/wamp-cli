@@ -23,7 +23,6 @@
 package main
 
 import (
-	"fmt"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/codebasepk/wick/wamp"
@@ -47,10 +46,7 @@ var (
 
 	register          = kingpin.Command("register", "Register a procedure.")
 	registerProcedure = register.Arg("procedure", "procedure name").Required().String()
-	bashFlagReg       = register.Flag("bash", "enter bash script").Short('b').Strings()
-	shellFlagReg      = register.Flag("shell","enter the shell script").Short('s').Strings()
-	pythonFlagReg     = register.Flag("python","enter the python script").Short('p').Strings()
-	execFlagReg       = register.Flag("exec","execute any file").Short('e').String()
+	onInvocationCmd   = register.Arg("command", "Shell command to run and return it's output").String()
 
 	call            = kingpin.Command("call", "Call a procedure.")
 	callProcedure   = call.Arg("procedure", "Procedure to call").Required().String()
@@ -65,19 +61,7 @@ func main() {
 		case publish.FullCommand():
 			wamp.Publish(*url, *realm, *publishTopic, *publishArgs, *publishKeywordArgs, *authid, *authSecret)
 		case register.FullCommand():
-			if *bashFlagReg != nil && *shellFlagReg == nil && *pythonFlagReg == nil && *execFlagReg == "" {
-				wamp.Register(*url, *realm, *registerProcedure, *bashFlagReg,"bash",*authid, *authSecret)
-			} else if *shellFlagReg != nil && *bashFlagReg == nil && *pythonFlagReg ==nil && *execFlagReg == "" {
-				wamp.Register(*url, *realm, *registerProcedure, *shellFlagReg,"sh",*authid, *authSecret)
-			} else if *pythonFlagReg != nil && *bashFlagReg == nil && *shellFlagReg == nil && *execFlagReg == "" {
-				wamp.Register(*url, *realm, *registerProcedure, *pythonFlagReg,"python3",*authid, *authSecret)
-			} else if execFlagReg != nil && *bashFlagReg == nil && *shellFlagReg == nil && *pythonFlagReg ==nil {
-				wamp.Register(*url, *realm, *registerProcedure, nil, *execFlagReg,*authid, *authSecret)
-			} else if *bashFlagReg == nil && *shellFlagReg == nil && *pythonFlagReg == nil && *execFlagReg == "" {
-				wamp.Register(*url, *realm, *registerProcedure, nil,"",*authid, *authSecret)
-			}else {
-				fmt.Println("Please use one type for running script")
-			}
+			wamp.Register(*url, *realm, *registerProcedure, *onInvocationCmd, *authid, *authSecret)
 		case call.FullCommand():
 			wamp.Call(*url, *realm, *callProcedure, *callArgs, *callKeywordArgs,*authid, *authSecret)
 	}

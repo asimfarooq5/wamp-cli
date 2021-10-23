@@ -26,15 +26,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/gammazero/nexus/v3/client"
+	"github.com/gammazero/nexus/v3/wamp"
+	"github.com/gammazero/nexus/v3/wamp/crsign"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
-	"strings"
-
-	"github.com/gammazero/nexus/v3/client"
-	"github.com/gammazero/nexus/v3/wamp"
-	"github.com/gammazero/nexus/v3/wamp/crsign"
 )
 
 var goodSecret string
@@ -103,7 +101,7 @@ func Publish(url string, realm string, topic string, args []string, kwargs map[s
 	}
 }
 
-func Register(url string, realm string, procedure string, commands []string, shell string, authid string, authSecret string) {
+func Register(url string, realm string, procedure string, command string, authid string, authSecret string) {
 	logger := log.New(os.Stdout, "Register> ", 0)
 
 	cfg := getConfig(realm, authid, authSecret, logger)
@@ -120,27 +118,12 @@ func Register(url string, realm string, procedure string, commands []string, she
 
 		argsKWArgs(inv.Arguments,inv.ArgumentsKw)
 
-		if commands != nil {
-			var command string
-			for _, com := range commands {
-				if command != "" {
-					command = command + "; " + com
-				} else {
-					command = command + com
-				}
-			}
-
-			err, out, _ := shellOut(command, shell)
+		if command != "" {
+			err, out, _ := shellOut(command)
 			if err != nil {
 				log.Println("error: ", err)
 			}
 
-			return client.InvokeResult{Args: wamp.List{out}}
-		} else if shell != "" && commands == nil {
-			err, out, _ := execute(shell)
-			if err != nil {
-				log.Println("error: ", err)
-			}
 			return client.InvokeResult{Args: wamp.List{out}}
 		}
 
@@ -271,29 +254,11 @@ func argsKWArgs(args wamp.List, kwArgs wamp.Dict)  {
 	}
 }
 
-func shellOut(command string, ShellToUse string) (error, string, string) {
+func shellOut(command string) (error, string, string) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	var cmd *exec.Cmd
-	if strings.HasSuffix(command, ".sh") || strings.HasSuffix(command, ".py") {
-		cmd = exec.Command(ShellToUse, command)
-	} else {
-		cmd = exec.Command(ShellToUse, "-c", command)
-	}
-
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return err, stdout.String(), stderr.String()
-}
-
-func execute(command string) (error, string, string) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	var cmd *exec.Cmd
-
-	cmd = exec.Command(command)
-
+	cmd = exec.Command("bash", "-c", command)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
