@@ -25,6 +25,7 @@ package wamp
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"fmt"
 	"log"
 	"os"
@@ -112,11 +113,15 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 		},
 		AuthHandlers: map[string]client.AuthFunc{
 			"cryptosign": func (c *wamp.Challenge) (string, wamp.Dict) {
-				challengeHex, _ := wamp.AsString(c.Extra["challenege"])
+				challengeHex, _ := wamp.AsString(c.Extra["challenge"])
 				challengeBytes, _ := hex.DecodeString(challengeHex)
 				privkey, _ := hex.DecodeString(privateKey)
 				pvk := ed25519.PrivateKey(privkey)
-				signed := ed25519.Sign(pvk, challengeBytes)
+				//signed := ed25519.Sign(pvk, challengeBytes)
+				signed, err := pvk.Sign(nil, challengeBytes, crypto.SHA512)
+				if err != nil {
+					println(err)
+				}
 				signedHex := hex.EncodeToString(signed)
 				result := signedHex + challengeHex
 				return result, wamp.Dict{}
