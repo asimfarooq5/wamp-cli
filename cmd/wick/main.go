@@ -32,16 +32,16 @@ import (
 var (
 	url            = kingpin.Flag("url", "WAMP URL to connect to").
 		Default("ws://localhost:8080/ws").Envar("WICK_URL").String()
-	realm          = kingpin.Flag("realm", "The WAMP realm to join").Default("realm1").Envar("WICK_REALM").String()
-	authmethod     = kingpin.Flag("authmethod","The authentication method to use").Envar("WICK_AUTHMETHOD").
-		Enum("ticket", "wampcra", "cryptosign")
+	realm      = kingpin.Flag("realm", "The WAMP realm to join").Default("realm1").Envar("WICK_REALM").String()
+	authMethod = kingpin.Flag("authMethod","The authentication method to use").Envar("WICK_AUTHMETHOD").
+		Enum("anonymous", "ticket", "wampcra", "cryptosign")
 	authid         = kingpin.Flag("authid","The authid to use, if authenticating").Envar("WICK_AUTHID").String()
 	authrole       = kingpin.Flag("authrole","The authrole to use, if authenticating").Envar("WICK_AUTHROLE").String()
 	secret         = kingpin.Flag("secret", "The secret to use in Challenge-Response Auth.").
 		Envar("WICK_CRA_SECRET").String()
 	privateKey     = kingpin.Flag("private-key", "The ed25519 private key hex for cryptosign").
 		Envar("WICK_CRYPTOSIGN_PRIVATE_KEY").String()
-	publicKey      = kingpin.Flag("private-key", "The ed25519 public key hex for cryptosign").
+	publicKey      = kingpin.Flag("public-key", "The ed25519 public key hex for cryptosign").
 		Envar("WICK_CRYPTOSIGN_PUBLIC_KEY").String()
 	ticket         = kingpin.Flag("ticket", "The ticket when when ticket authentication").Envar("WICK_TICKET").String()
 	authExtra      = kingpin.Flag("authextra", "The authentication extras").StringMap()
@@ -67,20 +67,33 @@ var (
 func main() {
 	cmd := kingpin.Parse()
 
-	switch *authmethod {
+	switch *authMethod {
+	case "anonymous":
+		if *privateKey != "" {
+			println("Private key not needed for anonymous auth")
+			os.Exit(1)
+		}
+		if *ticket != "" {
+			println("ticket not needed for anonymous auth")
+			os.Exit(1)
+		}
+		if *secret != "" {
+			println("secret not needed for anonymous auth")
+			os.Exit(1)
+		}
 	case "cryptosign":
 		if *privateKey == "" {
-			println("Must provide private key when authmethod is cryptosign")
+			println("Must provide private key when authMethod is cryptosign")
 			os.Exit(1)
 		}
 	case "ticket":
 		if *ticket == "" {
-			println("Must provide ticket when authmethod is ticket")
+			println("Must provide ticket when authMethod is ticket")
 			os.Exit(1)
 		}
 	case "wampcra":
 		if *secret == "" {
-			println("Must provide secret when authmethod is wampcra")
+			println("Must provide secret when authMethod is wampcra")
 			os.Exit(1)
 		}
 	}
