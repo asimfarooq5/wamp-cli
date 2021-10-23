@@ -38,7 +38,7 @@ import (
 var goodSecret string
 
 func connect(url string, realm string, authid string, authSecret string, logger *log.Logger) *client.Client {
-	cfg := getConfig(realm, authid, authSecret, logger)
+	cfg := initConfig(realm, authid, authSecret, logger)
 	session, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
 		logger.Fatal(err)
@@ -155,7 +155,7 @@ func Call(url string, realm string, procedure string, args []string, kwargs map[
 	}
 }
 
-func CRAAuthFunction(c *wamp.Challenge) (string, wamp.Dict) {
+func CRAuthentication(c *wamp.Challenge) (string, wamp.Dict) {
 	sig := crsign.RespondChallenge(goodSecret, c, nil)
 	return sig, wamp.Dict{}
 }
@@ -176,7 +176,7 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 	return keywordArguments
 }
 
-func getConfig(realm string, authidFlag string, authSecretFlag string, logger *log.Logger) client.Config {
+func initConfig(realm string, authidFlag string, authSecretFlag string, logger *log.Logger) client.Config {
 	var cfg client.Config
 	if authidFlag != "" && authSecretFlag != "" {
 		cfg = client.Config{
@@ -186,7 +186,7 @@ func getConfig(realm string, authidFlag string, authSecretFlag string, logger *l
 				"authid": authidFlag,
 			},
 			AuthHandlers: map[string]client.AuthFunc{
-				"wampcra": CRAAuthFunction,
+				"wampcra": CRAuthentication,
 			},
 		}
 	} else {
