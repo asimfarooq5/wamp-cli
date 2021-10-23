@@ -6,8 +6,11 @@ summary: WAMP In Command-line
 description: WAMP In Command-line
 
 architectures:
-  - build-on: [amd64, arm64]
-    run-on: [amd64, arm64]
+  - build-on: amd64
+    run-on: amd64
+
+  - build-on: arm64
+    run-on: arm64
 
 grade: stable
 confinement: strict
