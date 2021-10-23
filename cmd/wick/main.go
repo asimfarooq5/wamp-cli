@@ -30,54 +30,55 @@ import (
 )
 
 var (
-	url            = kingpin.Flag("url", "WAMP URL to connect to, like ws://127.0.0.1:8080/ws").Required().Short('u').String()
-	realm          = kingpin.Flag("realm", "The WAMP realm to join").Required().Short('r').String()
+	url            = kingpin.Flag("url", "WAMP URL to connect to").Default("ws://localhost:8080/ws").String()
+	realm          = kingpin.Flag("realm", "The WAMP realm to join").Default("realm1").String()
+	authmethod     = kingpin.Flag("authmethod","The authentication method to use").Enum("anonymous", "ticket", "wampcra", "cryptosign")
 	authid         = kingpin.Flag("authid","The authid to use, if authenticating").String()
 	authrole       = kingpin.Flag("authrole","The authrole to use, if authenticating").String()
-	authSecretFlag = kingpin.Flag("secret", "The secret to use in CRAuthentication.").String()
+	authSecret     = kingpin.Flag("secret", "The secret to use in CRAuthentication.").String()
 
-	subscribeCommand = kingpin.Command("subscribe", "subscribe a topic.")
-	subscribeTopic   = subscribeCommand.Arg("topic", "Topic to subscribe to").Required().String()
+	subscribe      = kingpin.Command("subscribe", "subscribe a topic.")
+	subscribeTopic = subscribe.Arg("topic", "Topic to subscribe to").Required().String()
 
-	publishCommand     = kingpin.Command("publish", "publishing a topic.")
-	publishTopic       = publishCommand.Arg("topic", "topic name").Required().String()
-	publishArgs        = publishCommand.Arg("args","give the arguments").Strings()
-	publishKeywordArgs = publishCommand.Flag("kwarg", "give the keyword arguments").Short('k').StringMap()
+	publish            = kingpin.Command("publish", "Publish to a topic.")
+	publishTopic       = publish.Arg("topic", "topic name").Required().String()
+	publishArgs        = publish.Arg("args","give the arguments").Strings()
+	publishKeywordArgs = publish.Flag("kwarg", "give the keyword arguments").Short('k').StringMap()
 
-	registerCommand   = kingpin.Command("register", "registering a procedure.")
-	registerProcedure = registerCommand.Arg("procedure", "procedure name").Required().String()
-	bashFlagReg       = registerCommand.Flag("bash", "enter bash script").Short('b').Strings()
-	shellFlagReg      = registerCommand.Flag("shell","enter the shell script").Short('s').Strings()
-	pythonFlagReg     = registerCommand.Flag("python","enter the python script").Short('p').Strings()
-	execFlagReg       = registerCommand.Flag("exec","execute any file").Short('e').String()
+	register          = kingpin.Command("register", "Register a procedure.")
+	registerProcedure = register.Arg("procedure", "procedure name").Required().String()
+	bashFlagReg       = register.Flag("bash", "enter bash script").Short('b').Strings()
+	shellFlagReg      = register.Flag("shell","enter the shell script").Short('s').Strings()
+	pythonFlagReg     = register.Flag("python","enter the python script").Short('p').Strings()
+	execFlagReg       = register.Flag("exec","execute any file").Short('e').String()
 
-	callCommand     = kingpin.Command("call", "calling a procedure.")
-	callProcedure   = callCommand.Arg("procedure", "Procedure to call").Required().String()
-	callArgs        = callCommand.Arg("args","give the arguments").Strings()
-	callKeywordArgs = callCommand.Flag("kwarg", "give the keyword arguments").Short('k').StringMap()
+	call            = kingpin.Command("call", "Call a procedure.")
+	callProcedure   = call.Arg("procedure", "Procedure to call").Required().String()
+	callArgs        = call.Arg("args","give the arguments").Strings()
+	callKeywordArgs = call.Flag("kwarg", "give the keyword arguments").Short('k').StringMap()
 )
 
 func main() {
 	switch kingpin.Parse() {
-		case "subscribe":
-			wamp.Subscribe(*url, *realm, *subscribeTopic, *authid, *authSecretFlag)
-		case "publish":
-			wamp.Publish(*url, *realm, *publishTopic, *publishArgs, *publishKeywordArgs, *authid, *authSecretFlag)
-		case "register":
+		case subscribe.FullCommand():
+			wamp.Subscribe(*url, *realm, *subscribeTopic, *authid, *authSecret)
+		case publish.FullCommand():
+			wamp.Publish(*url, *realm, *publishTopic, *publishArgs, *publishKeywordArgs, *authid, *authSecret)
+		case register.FullCommand():
 			if *bashFlagReg != nil && *shellFlagReg == nil && *pythonFlagReg == nil && *execFlagReg == "" {
-				wamp.Register(*url, *realm, *registerProcedure, *bashFlagReg,"bash",*authid, *authSecretFlag)
+				wamp.Register(*url, *realm, *registerProcedure, *bashFlagReg,"bash",*authid, *authSecret)
 			} else if *shellFlagReg != nil && *bashFlagReg == nil && *pythonFlagReg ==nil && *execFlagReg == "" {
-				wamp.Register(*url, *realm, *registerProcedure, *shellFlagReg,"sh",*authid, *authSecretFlag)
+				wamp.Register(*url, *realm, *registerProcedure, *shellFlagReg,"sh",*authid, *authSecret)
 			} else if *pythonFlagReg != nil && *bashFlagReg == nil && *shellFlagReg == nil && *execFlagReg == "" {
-				wamp.Register(*url, *realm, *registerProcedure, *pythonFlagReg,"python3",*authid, *authSecretFlag)
+				wamp.Register(*url, *realm, *registerProcedure, *pythonFlagReg,"python3",*authid, *authSecret)
 			} else if execFlagReg != nil && *bashFlagReg == nil && *shellFlagReg == nil && *pythonFlagReg ==nil {
-				wamp.Register(*url, *realm, *registerProcedure, nil, *execFlagReg,*authid, *authSecretFlag)
+				wamp.Register(*url, *realm, *registerProcedure, nil, *execFlagReg,*authid, *authSecret)
 			} else if *bashFlagReg == nil && *shellFlagReg == nil && *pythonFlagReg == nil && *execFlagReg == "" {
-				wamp.Register(*url, *realm, *registerProcedure, nil,"",*authid, *authSecretFlag)
+				wamp.Register(*url, *realm, *registerProcedure, nil,"",*authid, *authSecret)
 			}else {
 				fmt.Println("Please use one type for running script")
 			}
-		case "call":
-			wamp.Call(*url, *realm, *callProcedure, *callArgs, *callKeywordArgs,*authid, *authSecretFlag)
+		case call.FullCommand():
+			wamp.Call(*url, *realm, *callProcedure, *callArgs, *callKeywordArgs,*authid, *authSecret)
 	}
 }
