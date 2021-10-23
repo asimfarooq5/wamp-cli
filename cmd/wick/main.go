@@ -29,12 +29,17 @@ import (
 )
 
 var (
-	url            = kingpin.Flag("url", "WAMP URL to connect to").Default("ws://localhost:8080/ws").String()
+	url            = kingpin.Flag("url", "WAMP URL to connect to").
+		Default("ws://localhost:8080/ws").String()
 	realm          = kingpin.Flag("realm", "The WAMP realm to join").Default("realm1").String()
-	authmethod     = kingpin.Flag("authmethod","The authentication method to use").Enum("anonymous", "ticket", "wampcra", "cryptosign")
+	authmethod     = kingpin.Flag("authmethod","The authentication method to use").
+		Enum("anonymous", "ticket", "wampcra", "cryptosign")
 	authid         = kingpin.Flag("authid","The authid to use, if authenticating").String()
 	authrole       = kingpin.Flag("authrole","The authrole to use, if authenticating").String()
-	authSecret     = kingpin.Flag("secret", "The secret to use in CRAuthentication.").String()
+	secret         = kingpin.Flag("secret", "The secret to use in Challenge-Response Auth.").String()
+	privateKey     = kingpin.Flag("private-key", "The ed25519 private key hex for cryptosign").String()
+	ticket         = kingpin.Flag("ticket", "The ticket when when ticket authentication").String()
+	authExtra      = kingpin.Flag("authextra", "The authentication extras").StringMap()
 
 	subscribe      = kingpin.Command("subscribe", "subscribe a topic.")
 	subscribeTopic = subscribe.Arg("topic", "Topic to subscribe to").Required().String()
@@ -57,12 +62,12 @@ var (
 func main() {
 	switch kingpin.Parse() {
 		case subscribe.FullCommand():
-			wamp.Subscribe(*url, *realm, *subscribeTopic, *authid, *authSecret)
+			wamp.Subscribe(*url, *realm, *subscribeTopic, *authid, *secret)
 		case publish.FullCommand():
-			wamp.Publish(*url, *realm, *publishTopic, *publishArgs, *publishKeywordArgs, *authid, *authSecret)
+			wamp.Publish(*url, *realm, *publishTopic, *publishArgs, *publishKeywordArgs, *authid, *secret)
 		case register.FullCommand():
-			wamp.Register(*url, *realm, *registerProcedure, *onInvocationCmd, *authid, *authSecret)
+			wamp.Register(*url, *realm, *registerProcedure, *onInvocationCmd, *authid, *secret)
 		case call.FullCommand():
-			wamp.Call(*url, *realm, *callProcedure, *callArgs, *callKeywordArgs,*authid, *authSecret)
+			wamp.Call(*url, *realm, *callProcedure, *callArgs, *callKeywordArgs,*authid, *secret)
 	}
 }
