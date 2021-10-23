@@ -24,6 +24,7 @@ package main
 
 import (
 	"gopkg.in/alecthomas/kingpin.v2"
+	"os"
 
 	"github.com/codebasepk/wick/wamp"
 )
@@ -33,7 +34,7 @@ var (
 		Default("ws://localhost:8080/ws").String()
 	realm          = kingpin.Flag("realm", "The WAMP realm to join").Default("realm1").String()
 	authmethod     = kingpin.Flag("authmethod","The authentication method to use").
-		Enum("anonymous", "ticket", "wampcra", "cryptosign")
+		Enum("ticket", "wampcra", "cryptosign")
 	authid         = kingpin.Flag("authid","The authid to use, if authenticating").String()
 	authrole       = kingpin.Flag("authrole","The authrole to use, if authenticating").String()
 	secret         = kingpin.Flag("secret", "The secret to use in Challenge-Response Auth.").String()
@@ -60,14 +61,34 @@ var (
 )
 
 func main() {
-	switch kingpin.Parse() {
-		case subscribe.FullCommand():
-			wamp.Subscribe(*url, *realm, *subscribeTopic, *authid, *secret)
-		case publish.FullCommand():
-			wamp.Publish(*url, *realm, *publishTopic, *publishArgs, *publishKeywordArgs, *authid, *secret)
-		case register.FullCommand():
-			wamp.Register(*url, *realm, *registerProcedure, *onInvocationCmd, *authid, *secret)
-		case call.FullCommand():
-			wamp.Call(*url, *realm, *callProcedure, *callArgs, *callKeywordArgs,*authid, *secret)
+	cmd := kingpin.Parse()
+
+	switch *authmethod {
+	case "cryptosign":
+		if *privateKey == "" {
+			println("Must provide private key when authmethod is cryptosign")
+			os.Exit(1)
+		}
+	case "ticket":
+		if *ticket == "" {
+			println("Must provide ticket when authmethod is ticket")
+			os.Exit(1)
+		}
+	case "wampcra":
+		if *secret == "" {
+			println("Must provide secret when authmethod is wampcra")
+			os.Exit(1)
+		}
+	}
+
+	switch cmd {
+	case subscribe.FullCommand():
+		wamp.Subscribe(*url, *realm, *subscribeTopic, *authid, *secret)
+	case publish.FullCommand():
+		wamp.Publish(*url, *realm, *publishTopic, *publishArgs, *publishKeywordArgs, *authid, *secret)
+	case register.FullCommand():
+		wamp.Register(*url, *realm, *registerProcedure, *onInvocationCmd, *authid, *secret)
+	case call.FullCommand():
+		wamp.Call(*url, *realm, *callProcedure, *callArgs, *callKeywordArgs,*authid, *secret)
 	}
 }

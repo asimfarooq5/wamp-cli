@@ -37,19 +37,21 @@ import (
 
 var goodSecret string
 
-func Subscribe(url string, realm string, topic string,  authid string, authSecret string) {
-	logger := log.New(os.Stdout, "Subscriber> ", 0)
-
+func connect(url string, realm string, authid string, authSecret string, logger *log.Logger) *client.Client {
 	cfg := getConfig(realm, authid, authSecret, logger)
-
-	// Connect subscriber session.
-	subscriber, err := client.ConnectNet(context.Background(), url, cfg)
+	session, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
 		logger.Fatal(err)
 	} else {
 		logger.Println("Connected to ", url)
 	}
-	defer subscriber.Close()
+
+	return session
+}
+
+func Subscribe(url string, realm string, topic string,  authid string, authSecret string) {
+	logger := log.New(os.Stdout, "Subscriber> ", 0)
+	session := connect(url, realm, authid, authSecret, logger)
 
 	// Define function to handle events received.
 	eventHandler := func(event *wamp.Event) {
@@ -57,7 +59,7 @@ func Subscribe(url string, realm string, topic string,  authid string, authSecre
 	}
 
 	// Subscribe to topic.
-	err = subscriber.Subscribe(topic, eventHandler, nil)
+	err := session.Subscribe(topic, eventHandler, nil)
 	if err != nil {
 		logger.Fatal("subscribe error:", err)
 	} else {
@@ -68,32 +70,24 @@ func Subscribe(url string, realm string, topic string,  authid string, authSecre
 	signal.Notify(sigChan, os.Interrupt)
 	select {
 	case <-sigChan:
-	case <-subscriber.Done():
+	case <-session.Done():
 		logger.Print("Router gone, exiting")
 		return // router gone, just exit
 	}
 
 	// Unsubscribe from topic.
-	if err = subscriber.Unsubscribe(topic); err != nil {
+	if err = session.Unsubscribe(topic); err != nil {
 		logger.Println("Failed to unsubscribe:", err)
 	}
 }
 
-func Publish(url string, realm string, topic string, args []string, kwargs map[string]string,
-	authidFlag string, authSecretFlag string) {
+func Publish(url string, realm string, topic string, args []string, kwargs map[string]string, authid string,
+	authSecret string) {
 	logger := log.New(os.Stdout, "Publisher> ", 0)
-
-	cfg := getConfig(realm, authidFlag, authSecretFlag, logger)
-
-	// Connect publisher session.
-	publisher, err := client.ConnectNet(context.Background(), url, cfg)
-	if err != nil {
-		logger.Fatal(err)
-	}
-	defer publisher.Close()
+	session := connect(url, realm, authid, authSecret, logger)
 
 	// Publish to topic.
-	err = publisher.Publish(topic, nil, listToWampList(args), dictToWampDict(kwargs))
+	err := session.Publish(topic, nil, listToWampList(args), dictToWampDict(kwargs))
 	if err != nil {
 		logger.Fatal("publish error:", err)
 	} else {
@@ -103,16 +97,7 @@ func Publish(url string, realm string, topic string, args []string, kwargs map[s
 
 func Register(url string, realm string, procedure string, command string, authid string, authSecret string) {
 	logger := log.New(os.Stdout, "Register> ", 0)
-
-	cfg := getConfig(realm, authid, authSecret, logger)
-
-	register, err := client.ConnectNet(context.Background(), url, cfg)
-	logger.Println("Connected to ", url)
-	if err != nil {
-		logger.Fatal(err)
-	}
-
-	defer register.Close()
+	session := connect(url, realm, authid, authSecret, logger)
 
 	eventHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
 
@@ -130,7 +115,7 @@ func Register(url string, realm string, procedure string, command string, authid
 		return client.InvokeResult{Args: wamp.List{""}}
 	}
 
-	if err = register.Register(procedure, eventHandler, nil);
+	if err := session.Register(procedure, eventHandler, nil);
 		err != nil {
 		logger.Fatal("Failed to register procedure:", err)
 	} else {
@@ -142,12 +127,12 @@ func Register(url string, realm string, procedure string, command string, authid
 	signal.Notify(sigChan, os.Interrupt)
 	select {
 	case <-sigChan:
-	case <-register.Done():
+	case <-session.Done():
 		logger.Print("Router gone, exiting")
 		return // router gone, just exit
 	}
 
-	if err = register.Unregister(procedure); err != nil {
+	if err := session.Unregister(procedure); err != nil {
 		logger.Println("Failed to unregister procedure:", err)
 	}
 
@@ -159,19 +144,10 @@ func Call(url string, realm string, procedure string, args []string, kwargs map[
 	authSecret string) {
 
 	logger := log.New(os.Stderr, "Caller> ", 0)
-
-	cfg := getConfig(realm, authid, authSecret, logger)
-
-	// Connect caller client
-	caller, err := client.ConnectNet(context.Background(), url, cfg)
-	if err != nil {
-		logger.Fatal(err)
-	}
-	defer caller.Close()
+	session := connect(url, realm, authid, authSecret, logger)
 
 	ctx := context.Background()
-
-	result, err := caller.Call(ctx, procedure, nil, listToWampList(args), dictToWampDict(kwargs), nil)
+	result, err := session.Call(ctx, procedure, nil, listToWampList(args), dictToWampDict(kwargs), nil)
 	if err != nil {
 		logger.Println("Failed to call ", err)
 	} else if result != nil {
