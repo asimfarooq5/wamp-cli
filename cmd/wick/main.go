@@ -23,8 +23,10 @@
 package main
 
 import (
+	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/transport/serialize"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"log"
 	"os"
 
 	"github.com/codebasepk/wick/wamp"
@@ -34,7 +36,7 @@ var (
 	url            = kingpin.Flag("url", "WAMP URL to connect to").
 		Default("ws://localhost:8080/ws").Envar("WICK_URL").String()
 	realm      = kingpin.Flag("realm", "The WAMP realm to join").Default("realm1").Envar("WICK_REALM").String()
-	authMethod = kingpin.Flag("authMethod","The authentication method to use").Envar("WICK_AUTHMETHOD").
+	authMethod = kingpin.Flag("authmethod","The authentication method to use").Envar("WICK_AUTHMETHOD").
 		Enum("anonymous", "ticket", "wampcra", "cryptosign")
 	authid         = kingpin.Flag("authid","The authid to use, if authenticating").Envar("WICK_AUTHID").String()
 	authrole       = kingpin.Flag("authrole","The authrole to use, if authenticating").Envar("WICK_AUTHROLE").String()
@@ -83,7 +85,8 @@ func main() {
 		serializerToUse = serialize.JSON
 	}
 
-	println(serializerToUse)
+	logger := log.New(os.Stdout, "wick> ", 0)
+	var session *client.Client
 
 	switch *authMethod {
 	case "anonymous":
@@ -99,31 +102,37 @@ func main() {
 			println("secret not needed for anonymous auth")
 			os.Exit(1)
 		}
+		os.Exit(1)
 	case "cryptosign":
 		if *privateKey == "" {
 			println("Must provide private key when authMethod is cryptosign")
 			os.Exit(1)
 		}
+		os.Exit(1)
 	case "ticket":
 		if *ticket == "" {
 			println("Must provide ticket when authMethod is ticket")
 			os.Exit(1)
 		}
+		session = wamp.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket, logger)
 	case "wampcra":
 		if *secret == "" {
 			println("Must provide secret when authMethod is wampcra")
 			os.Exit(1)
 		}
+		session = wamp.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret, logger)
+	default:
+		os.Exit(1)
 	}
 
 	switch cmd {
 	case subscribe.FullCommand():
-		wamp.Subscribe(*url, *realm, *subscribeTopic, *authid, *secret)
+		wamp.Subscribe(session, logger, *subscribeTopic)
 	case publish.FullCommand():
-		wamp.Publish(*url, *realm, *publishTopic, *publishArgs, *publishKeywordArgs, *authid, *secret)
+		wamp.Publish(session, logger, *publishTopic, *publishArgs, *publishKeywordArgs)
 	case register.FullCommand():
-		wamp.Register(*url, *realm, *registerProcedure, *onInvocationCmd, *authid, *secret)
+		wamp.Register(session, logger, *registerProcedure, *onInvocationCmd)
 	case call.FullCommand():
-		wamp.Call(*url, *realm, *callProcedure, *callArgs, *callKeywordArgs,*authid, *secret)
+		wamp.Call(session, logger, *callProcedure, *callArgs, *callKeywordArgs)
 	}
 }

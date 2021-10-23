@@ -26,19 +26,80 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/gammazero/nexus/v3/client"
-	"github.com/gammazero/nexus/v3/wamp"
-	"github.com/gammazero/nexus/v3/wamp/crsign"
+	"github.com/gammazero/nexus/v3/transport/serialize"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
+
+	"github.com/gammazero/nexus/v3/client"
+	"github.com/gammazero/nexus/v3/wamp"
+	"github.com/gammazero/nexus/v3/wamp/crsign"
 )
 
-var goodSecret string
+func ConnectTicket(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
+	ticket string, logger *log.Logger) *client.Client {
 
-func connect(url string, realm string, authid string, authSecret string, logger *log.Logger) *client.Client {
-	cfg := initConfig(realm, authid, authSecret, logger)
+	cfg := client.Config{
+		Realm:  realm,
+		Logger: logger,
+		HelloDetails: wamp.Dict{
+			"authid": authid,
+			"authrole": authrole,
+		},
+		AuthHandlers: map[string]client.AuthFunc{
+			"ticket": func (c *wamp.Challenge) (string, wamp.Dict) {
+				return ticket, wamp.Dict{}
+			},
+		},
+		Serialization: serializer,
+	}
+
+	session, err := client.ConnectNet(context.Background(), url, cfg)
+	if err != nil {
+		logger.Fatal(err)
+	} else {
+		logger.Println("Connected to ", url)
+	}
+
+	return session
+
+}
+
+func ConnectCRA(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
+	secret string, logger *log.Logger) *client.Client {
+
+	cfg := client.Config{
+		Realm:  realm,
+		Logger: logger,
+		HelloDetails: wamp.Dict{
+			"authid": authid,
+			"authrole": authrole,
+		},
+		AuthHandlers: map[string]client.AuthFunc{
+			"wampcra": func (c *wamp.Challenge) (string, wamp.Dict) {
+				sig := crsign.RespondChallenge(secret, c, nil)
+				return sig, wamp.Dict{}
+			},
+		},
+		Serialization: serializer,
+	}
+
+	session, err := client.ConnectNet(context.Background(), url, cfg)
+	if err != nil {
+		logger.Fatal(err)
+	} else {
+		logger.Println("Connected to ", url)
+	}
+
+	return session
+
+}
+
+func Connect(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
+	ticket string, craSecret string, privateKey string, logger *log.Logger) *client.Client {
+
+	cfg := initConfig(realm, serializer, authid, authrole, craSecret, logger)
 	session, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
 		logger.Fatal(err)
@@ -49,14 +110,10 @@ func connect(url string, realm string, authid string, authSecret string, logger 
 	return session
 }
 
-func Subscribe(url string, realm string, topic string,  authid string, authSecret string) {
-	logger := log.New(os.Stdout, "Subscriber> ", 0)
-	session := connect(url, realm, authid, authSecret, logger)
-	defer session.Close()
-
+func Subscribe(session *client.Client, logger *log.Logger, topic string) {
 	// Define function to handle events received.
 	eventHandler := func(event *wamp.Event) {
-		argsKWArgs(event.Arguments,event.ArgumentsKw)
+		argsKWArgs(event.Arguments, event.ArgumentsKw)
 	}
 
 	// Subscribe to topic.
@@ -82,11 +139,7 @@ func Subscribe(url string, realm string, topic string,  authid string, authSecre
 	}
 }
 
-func Publish(url string, realm string, topic string, args []string, kwargs map[string]string, authid string,
-	authSecret string) {
-	logger := log.New(os.Stdout, "Publisher> ", 0)
-	session := connect(url, realm, authid, authSecret, logger)
-	defer session.Close()
+func Publish(session *client.Client, logger *log.Logger, topic string, args []string, kwargs map[string]string) {
 
 	// Publish to topic.
 	err := session.Publish(topic, nil, listToWampList(args), dictToWampDict(kwargs))
@@ -97,11 +150,7 @@ func Publish(url string, realm string, topic string, args []string, kwargs map[s
 	}
 }
 
-func Register(url string, realm string, procedure string, command string, authid string, authSecret string) {
-	logger := log.New(os.Stdout, "Register> ", 0)
-	session := connect(url, realm, authid, authSecret, logger)
-	defer session.Close()
-
+func Register(session *client.Client, logger *log.Logger, procedure string, command string) {
 	eventHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
 
 		argsKWArgs(inv.Arguments,inv.ArgumentsKw)
@@ -143,13 +192,7 @@ func Register(url string, realm string, procedure string, command string, authid
 
 }
 
-func Call(url string, realm string, procedure string, args []string, kwargs map[string]string, authid string,
-	authSecret string) {
-
-	logger := log.New(os.Stderr, "Caller> ", 0)
-	session := connect(url, realm, authid, authSecret, logger)
-	defer session.Close()
-
+func Call(session *client.Client, logger *log.Logger, procedure string, args []string, kwargs map[string]string) {
 	ctx := context.Background()
 	result, err := session.Call(ctx, procedure, nil, listToWampList(args), dictToWampDict(kwargs), nil)
 	if err != nil {
@@ -157,11 +200,6 @@ func Call(url string, realm string, procedure string, args []string, kwargs map[
 	} else if result != nil {
 		fmt.Println(result.Arguments[0])
 	}
-}
-
-func CRAuthentication(c *wamp.Challenge) (string, wamp.Dict) {
-	sig := crsign.RespondChallenge(goodSecret, c, nil)
-	return sig, wamp.Dict{}
 }
 
 func listToWampList(args []string) wamp.List {
@@ -180,18 +218,25 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 	return keywordArguments
 }
 
-func initConfig(realm string, authidFlag string, authSecretFlag string, logger *log.Logger) client.Config {
+func initConfig(realm string, serializer serialize.Serialization, authid string, authrole string, craSecret string,
+	logger *log.Logger) client.Config {
+
 	var cfg client.Config
-	if authidFlag != "" && authSecretFlag != "" {
+
+	if authid != "" && craSecret != "" {
 		cfg = client.Config{
 			Realm:  realm,
 			Logger: logger,
 			HelloDetails: wamp.Dict{
-				"authid": authidFlag,
+				"authid": authid,
 			},
 			AuthHandlers: map[string]client.AuthFunc{
-				"wampcra": CRAuthentication,
+				"wampcra": func (c *wamp.Challenge) (string, wamp.Dict) {
+					sig := crsign.RespondChallenge(craSecret, c, nil)
+					return sig, wamp.Dict{}
+				},
 			},
+			Serialization: serializer,
 		}
 	} else {
 		cfg = client.Config{
@@ -199,8 +244,6 @@ func initConfig(realm string, authidFlag string, authSecretFlag string, logger *
 			Logger: logger,
 		}
 	}
-
-	goodSecret = authSecretFlag
 
 	return cfg
 }
