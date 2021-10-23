@@ -120,7 +120,8 @@ func main() {
 			println("Must provide private key when authMethod is cryptosign")
 			os.Exit(1)
 		}
-		session = wamp.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey, logger)
+		session = wamp.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey, *publicKey,
+			logger)
 	default:
 		os.Exit(1)
 	}

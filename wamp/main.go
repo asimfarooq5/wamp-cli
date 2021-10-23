@@ -26,13 +26,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/gammazero/nexus/v3/transport/serialize"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 
+	"encoding/hex"
+	"golang.org/x/crypto/ed25519"
+
 	"github.com/gammazero/nexus/v3/client"
+	"github.com/gammazero/nexus/v3/transport/serialize"
 	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/gammazero/nexus/v3/wamp/crsign"
 )
@@ -97,7 +100,7 @@ func ConnectCRA(url string, realm string, serializer serialize.Serialization, au
 }
 
 func ConnectCryptoSign(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	privateKey string, logger *log.Logger) *client.Client {
+	privateKey string, publicKey string, logger *log.Logger) *client.Client {
 
 	cfg := client.Config{
 		Realm:  realm,
@@ -105,11 +108,18 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 		HelloDetails: wamp.Dict{
 			"authid": authid,
 			"authrole": authrole,
+			"authextra": wamp.Dict{"pubkey": publicKey},
 		},
 		AuthHandlers: map[string]client.AuthFunc{
 			"cryptosign": func (c *wamp.Challenge) (string, wamp.Dict) {
-				sig := crsign.RespondChallenge(privateKey, c, nil)
-				return sig, wamp.Dict{}
+				challengeHex, _ := wamp.AsString(c.Extra["challenege"])
+				challengeBytes, _ := hex.DecodeString(challengeHex)
+				privkey, _ := hex.DecodeString(privateKey)
+				pvk := ed25519.PrivateKey(privkey)
+				signed := ed25519.Sign(pvk, challengeBytes)
+				signedHex := hex.EncodeToString(signed)
+				result := signedHex + challengeHex
+				return result, wamp.Dict{}
 			},
 		},
 		Serialization: serializer,
@@ -231,36 +241,6 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 		keywordArguments[key] = value
 	}
 	return keywordArguments
-}
-
-func initConfig(realm string, serializer serialize.Serialization, authid string, authrole string, craSecret string,
-	logger *log.Logger) client.Config {
-
-	var cfg client.Config
-
-	if authid != "" && craSecret != "" {
-		cfg = client.Config{
-			Realm:  realm,
-			Logger: logger,
-			HelloDetails: wamp.Dict{
-				"authid": authid,
-			},
-			AuthHandlers: map[string]client.AuthFunc{
-				"wampcra": func (c *wamp.Challenge) (string, wamp.Dict) {
-					sig := crsign.RespondChallenge(craSecret, c, nil)
-					return sig, wamp.Dict{}
-				},
-			},
-			Serialization: serializer,
-		}
-	} else {
-		cfg = client.Config{
-			Realm:  realm,
-			Logger: logger,
-		}
-	}
-
-	return cfg
 }
 
 func argsKWArgs(args wamp.List, kwArgs wamp.Dict)  {
