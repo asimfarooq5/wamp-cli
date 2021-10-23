@@ -52,6 +52,7 @@ func connect(url string, realm string, authid string, authSecret string, logger 
 func Subscribe(url string, realm string, topic string,  authid string, authSecret string) {
 	logger := log.New(os.Stdout, "Subscriber> ", 0)
 	session := connect(url, realm, authid, authSecret, logger)
+	defer session.Close()
 
 	// Define function to handle events received.
 	eventHandler := func(event *wamp.Event) {
@@ -85,6 +86,7 @@ func Publish(url string, realm string, topic string, args []string, kwargs map[s
 	authSecret string) {
 	logger := log.New(os.Stdout, "Publisher> ", 0)
 	session := connect(url, realm, authid, authSecret, logger)
+	defer session.Close()
 
 	// Publish to topic.
 	err := session.Publish(topic, nil, listToWampList(args), dictToWampDict(kwargs))
@@ -98,6 +100,7 @@ func Publish(url string, realm string, topic string, args []string, kwargs map[s
 func Register(url string, realm string, procedure string, command string, authid string, authSecret string) {
 	logger := log.New(os.Stdout, "Register> ", 0)
 	session := connect(url, realm, authid, authSecret, logger)
+	defer session.Close()
 
 	eventHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
 
@@ -145,6 +148,7 @@ func Call(url string, realm string, procedure string, args []string, kwargs map[
 
 	logger := log.New(os.Stderr, "Caller> ", 0)
 	session := connect(url, realm, authid, authSecret, logger)
+	defer session.Close()
 
 	ctx := context.Background()
 	result, err := session.Call(ctx, procedure, nil, listToWampList(args), dictToWampDict(kwargs), nil)
