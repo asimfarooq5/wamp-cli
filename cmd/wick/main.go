@@ -103,12 +103,6 @@ func main() {
 			os.Exit(1)
 		}
 		os.Exit(1)
-	case "cryptosign":
-		if *privateKey == "" {
-			println("Must provide private key when authMethod is cryptosign")
-			os.Exit(1)
-		}
-		os.Exit(1)
 	case "ticket":
 		if *ticket == "" {
 			println("Must provide ticket when authMethod is ticket")
@@ -121,6 +115,12 @@ func main() {
 			os.Exit(1)
 		}
 		session = wamp.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret, logger)
+	case "cryptosign":
+		if *privateKey == "" {
+			println("Must provide private key when authMethod is cryptosign")
+			os.Exit(1)
+		}
+		session = wamp.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey, logger)
 	default:
 		os.Exit(1)
 	}

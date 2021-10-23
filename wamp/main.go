@@ -96,10 +96,25 @@ func ConnectCRA(url string, realm string, serializer serialize.Serialization, au
 
 }
 
-func Connect(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	ticket string, craSecret string, privateKey string, logger *log.Logger) *client.Client {
+func ConnectCryptoSign(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
+	privateKey string, logger *log.Logger) *client.Client {
 
-	cfg := initConfig(realm, serializer, authid, authrole, craSecret, logger)
+	cfg := client.Config{
+		Realm:  realm,
+		Logger: logger,
+		HelloDetails: wamp.Dict{
+			"authid": authid,
+			"authrole": authrole,
+		},
+		AuthHandlers: map[string]client.AuthFunc{
+			"cryptosign": func (c *wamp.Challenge) (string, wamp.Dict) {
+				sig := crsign.RespondChallenge(privateKey, c, nil)
+				return sig, wamp.Dict{}
+			},
+		},
+		Serialization: serializer,
+	}
+
 	session, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
 		logger.Fatal(err)
