@@ -5,7 +5,7 @@ CLI tool to make WAMP RPCs and PubSub. Useful for developing WAMP Components and
 ```bash
 git clone git@github.com:codebasepk/wick.git
 cd wick
-go get
-cd cmd/wick
-go build
+go get github.com/codebasepk/wick/cmd/wick
+go build github.com/codebasepk/wick/cmd/wick
+./wick
 ```
