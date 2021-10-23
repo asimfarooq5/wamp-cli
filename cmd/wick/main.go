@@ -23,6 +23,7 @@
 package main
 
 import (
+	"github.com/gammazero/nexus/v3/transport/serialize"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"os"
 
@@ -45,6 +46,8 @@ var (
 		Envar("WICK_CRYPTOSIGN_PUBLIC_KEY").String()
 	ticket         = kingpin.Flag("ticket", "The ticket when when ticket authentication").Envar("WICK_TICKET").String()
 	authExtra      = kingpin.Flag("authextra", "The authentication extras").StringMap()
+	serializer     = kingpin.Flag("serializer", "The serializer to use").Envar("WICK_SERIALIZER").Default("json").
+		Enum("json", "msgpack", "cbor")
 
 	subscribe      = kingpin.Command("subscribe", "subscribe a topic.")
 	subscribeTopic = subscribe.Arg("topic", "Topic to subscribe to").Required().String()
@@ -66,6 +69,21 @@ var (
 
 func main() {
 	cmd := kingpin.Parse()
+
+	serializerToUse := serialize.JSON
+
+	switch *serializer {
+	case "json":
+		serializerToUse = serialize.JSON
+	case "msgpack":
+		serializerToUse = serialize.MSGPACK
+	case "cbor":
+		serializerToUse = serialize.CBOR
+	default:
+		serializerToUse = serialize.JSON
+	}
+
+	println(serializerToUse)
 
 	switch *authMethod {
 	case "anonymous":
