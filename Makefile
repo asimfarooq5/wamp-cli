@@ -6,3 +6,6 @@ build:
 
 run:
 	./wick
+
+clean:
+	rm -f wick
