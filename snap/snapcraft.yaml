@@ -3,8 +3,11 @@ base: core20
 version: git
 compression: lzo
 summary: WAMP In Command-line
-description: |
-  WAMP In Command-line
+description: WAMP In Command-line
+
+architectures:
+  - build-on: [amd64, arm64]
+    run-on: [amd64, arm64]
 
 grade: stable
 confinement: strict
