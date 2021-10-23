@@ -25,7 +25,6 @@ package wamp
 import (
 	"bytes"
 	"context"
-	"crypto"
 	"fmt"
 	"log"
 	"os"
@@ -40,6 +39,17 @@ import (
 	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/gammazero/nexus/v3/wamp/crsign"
 )
+
+func connect(url string, cfg client.Config, logger *log.Logger) *client.Client {
+	session, err := client.ConnectNet(context.Background(), url, cfg)
+	if err != nil {
+		logger.Fatal(err)
+	} else {
+		logger.Println("Connected to ", url)
+	}
+
+	return session
+}
 
 func ConnectAnonymous(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
 	logger *log.Logger) *client.Client {
@@ -60,26 +70,25 @@ func ConnectAnonymous(url string, realm string, serializer serialize.Serializati
 		Serialization: serializer,
 	}
 
-	session, err := client.ConnectNet(context.Background(), url, cfg)
-	if err != nil {
-		logger.Fatal(err)
-	} else {
-		logger.Println("Connected to ", url)
-	}
-
-	return session
+	return connect(url, cfg, logger)
 }
 
 func ConnectTicket(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
 	ticket string, logger *log.Logger) *client.Client {
 
+	helloDict := wamp.Dict{}
+	if authid != "" {
+		helloDict["authid"] = authid
+	}
+
+	if authrole != "" {
+		helloDict["authrole"] = authrole
+	}
+
 	cfg := client.Config{
 		Realm:  realm,
 		Logger: logger,
-		HelloDetails: wamp.Dict{
-			"authid": authid,
-			"authrole": authrole,
-		},
+		HelloDetails: helloDict,
 		AuthHandlers: map[string]client.AuthFunc{
 			"ticket": func (c *wamp.Challenge) (string, wamp.Dict) {
 				return ticket, wamp.Dict{}
@@ -88,26 +97,25 @@ func ConnectTicket(url string, realm string, serializer serialize.Serialization,
 		Serialization: serializer,
 	}
 
-	session, err := client.ConnectNet(context.Background(), url, cfg)
-	if err != nil {
-		logger.Fatal(err)
-	} else {
-		logger.Println("Connected to ", url)
-	}
-
-	return session
+	return connect(url, cfg, logger)
 }
 
 func ConnectCRA(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
 	secret string, logger *log.Logger) *client.Client {
 
+	helloDict := wamp.Dict{}
+	if authid != "" {
+		helloDict["authid"] = authid
+	}
+
+	if authrole != "" {
+		helloDict["authrole"] = authrole
+	}
+
 	cfg := client.Config{
 		Realm:  realm,
 		Logger: logger,
-		HelloDetails: wamp.Dict{
-			"authid": authid,
-			"authrole": authrole,
-		},
+		HelloDetails: helloDict,
 		AuthHandlers: map[string]client.AuthFunc{
 			"wampcra": func (c *wamp.Challenge) (string, wamp.Dict) {
 				sig := crsign.RespondChallenge(secret, c, nil)
@@ -117,39 +125,38 @@ func ConnectCRA(url string, realm string, serializer serialize.Serialization, au
 		Serialization: serializer,
 	}
 
-	session, err := client.ConnectNet(context.Background(), url, cfg)
-	if err != nil {
-		logger.Fatal(err)
-	} else {
-		logger.Println("Connected to ", url)
-	}
-
-	return session
-
+	return connect(url, cfg, logger)
 }
 
 func ConnectCryptoSign(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
 	privateKey string, publicKey string, logger *log.Logger) *client.Client {
 
+	helloDict := wamp.Dict{}
+	if authid != "" {
+		helloDict["authid"] = authid
+	}
+
+	if authrole != "" {
+		helloDict["authrole"] = authrole
+	}
+
+	if publicKey != "" {
+		helloDict["authextra"] = wamp.Dict{"pubkey": publicKey}
+	}
+
 	cfg := client.Config{
 		Realm:  realm,
 		Logger: logger,
-		HelloDetails: wamp.Dict{
-			"authid": authid,
-			"authrole": authrole,
-			"authextra": wamp.Dict{"pubkey": publicKey},
-		},
+		HelloDetails: helloDict,
 		AuthHandlers: map[string]client.AuthFunc{
 			"cryptosign": func (c *wamp.Challenge) (string, wamp.Dict) {
 				challengeHex, _ := wamp.AsString(c.Extra["challenge"])
 				challengeBytes, _ := hex.DecodeString(challengeHex)
+
 				privkey, _ := hex.DecodeString(privateKey)
-				pvk := ed25519.PrivateKey(privkey)
-				//signed := ed25519.Sign(pvk, challengeBytes)
-				signed, err := pvk.Sign(nil, challengeBytes, crypto.SHA512)
-				if err != nil {
-					println(err)
-				}
+				pvk := ed25519.NewKeyFromSeed(privkey)
+
+				signed := ed25519.Sign(pvk, challengeBytes)
 				signedHex := hex.EncodeToString(signed)
 				result := signedHex + challengeHex
 				return result, wamp.Dict{}
@@ -158,14 +165,7 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 		Serialization: serializer,
 	}
 
-	session, err := client.ConnectNet(context.Background(), url, cfg)
-	if err != nil {
-		logger.Fatal(err)
-	} else {
-		logger.Println("Connected to ", url)
-	}
-
-	return session
+	return connect(url, cfg, logger)
 }
 
 func Subscribe(session *client.Client, logger *log.Logger, topic string) {
