@@ -41,6 +41,35 @@ import (
 	"github.com/gammazero/nexus/v3/wamp/crsign"
 )
 
+func ConnectAnonymous(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
+	logger *log.Logger) *client.Client {
+
+	helloDict := wamp.Dict{}
+	if authid != "" {
+		helloDict["authid"] = authid
+	}
+
+	if authrole != "" {
+		helloDict["authrole"] = authrole
+	}
+
+	cfg := client.Config{
+		Realm:  realm,
+		Logger: logger,
+		HelloDetails: helloDict,
+		Serialization: serializer,
+	}
+
+	session, err := client.ConnectNet(context.Background(), url, cfg)
+	if err != nil {
+		logger.Fatal(err)
+	} else {
+		logger.Println("Connected to ", url)
+	}
+
+	return session
+}
+
 func ConnectTicket(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
 	ticket string, logger *log.Logger) *client.Client {
 
@@ -67,7 +96,6 @@ func ConnectTicket(url string, realm string, serializer serialize.Serialization,
 	}
 
 	return session
-
 }
 
 func ConnectCRA(url string, realm string, serializer serialize.Serialization, authid string, authrole string,

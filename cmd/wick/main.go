@@ -37,7 +37,7 @@ var (
 		Default("ws://localhost:8080/ws").Envar("WICK_URL").String()
 	realm      = kingpin.Flag("realm", "The WAMP realm to join").Default("realm1").Envar("WICK_REALM").String()
 	authMethod = kingpin.Flag("authmethod","The authentication method to use").Envar("WICK_AUTHMETHOD").
-		Enum("anonymous", "ticket", "wampcra", "cryptosign")
+		Default("anonymous").Enum("anonymous", "ticket", "wampcra", "cryptosign")
 	authid         = kingpin.Flag("authid","The authid to use, if authenticating").Envar("WICK_AUTHID").String()
 	authrole       = kingpin.Flag("authrole","The authrole to use, if authenticating").Envar("WICK_AUTHROLE").String()
 	secret         = kingpin.Flag("secret", "The secret to use in Challenge-Response Auth.").
@@ -47,7 +47,6 @@ var (
 	publicKey      = kingpin.Flag("public-key", "The ed25519 public key hex for cryptosign").
 		Envar("WICK_CRYPTOSIGN_PUBLIC_KEY").String()
 	ticket         = kingpin.Flag("ticket", "The ticket when when ticket authentication").Envar("WICK_TICKET").String()
-	authExtra      = kingpin.Flag("authextra", "The authentication extras").StringMap()
 	serializer     = kingpin.Flag("serializer", "The serializer to use").Envar("WICK_SERIALIZER").Default("json").
 		Enum("json", "msgpack", "cbor")
 
@@ -102,7 +101,7 @@ func main() {
 			println("secret not needed for anonymous auth")
 			os.Exit(1)
 		}
-		os.Exit(1)
+		session = wamp.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole, logger)
 	case "ticket":
 		if *ticket == "" {
 			println("Must provide ticket when authMethod is ticket")
@@ -122,9 +121,9 @@ func main() {
 		}
 		session = wamp.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey, *publicKey,
 			logger)
-	default:
-		os.Exit(1)
 	}
+
+	defer session.Close()
 
 	switch cmd {
 	case subscribe.FullCommand():
