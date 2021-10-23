@@ -140,9 +140,20 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 		helloDict["authrole"] = authrole
 	}
 
-	if publicKey != "" {
-		helloDict["authextra"] = wamp.Dict{"pubkey": publicKey}
+	privkey, _ := hex.DecodeString(privateKey)
+	pvk := ed25519.NewKeyFromSeed(privkey)
+	key := pvk.Public().(ed25519.PublicKey)
+	pubKeyExtracted := hex.EncodeToString(key)
+
+	if publicKey == "" {
+		publicKey = pubKeyExtracted
+	} else {
+		if publicKey != pubKeyExtracted {
+			logger.Fatal("Provided public-key does not correspond to the private key")
+		}
 	}
+
+	helloDict["authextra"] = wamp.Dict{"pubkey": publicKey}
 
 	cfg := client.Config{
 		Realm:  realm,
@@ -152,9 +163,6 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 			"cryptosign": func (c *wamp.Challenge) (string, wamp.Dict) {
 				challengeHex, _ := wamp.AsString(c.Extra["challenge"])
 				challengeBytes, _ := hex.DecodeString(challengeHex)
-
-				privkey, _ := hex.DecodeString(privateKey)
-				pvk := ed25519.NewKeyFromSeed(privkey)
 
 				signed := ed25519.Sign(pvk, challengeBytes)
 				signedHex := hex.EncodeToString(signed)
