@@ -6,7 +6,11 @@ On Linux use snapd
 ```shell
 sudo snap install wick
 ```
-On macOS use brew (TBD)
+On macOS use brew
+```shell
+brew tap codebasepk/wick https://github.com/codebasepk/wick
+brew install wick
+```
 
 ## How to build
 ```bash
