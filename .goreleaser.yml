@@ -43,7 +43,7 @@ brews:
     name: wick
     # Template for the url which is determined by the given Token (github or gitlab)
     # Default for github is "https://github.com/<repo_owner>/<repo_name>/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-    url_template: "https://github.com/<repo_owner>/<repo_name>/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    url_template: "https://github.com/codebasepk/wick/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
 
     homepage: https://github.com/codebasepk/wick
 
