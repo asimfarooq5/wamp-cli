@@ -301,7 +301,7 @@ func listToWampList(args []string) wamp.List {
 	var arguments wamp.List
 
 	if args == nil {
-		return wamp.List{}
+		return arguments
 	}
 
 	for _, value := range args {
