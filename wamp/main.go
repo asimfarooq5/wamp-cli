@@ -300,12 +300,14 @@ func Call(session *client.Client, logger *log.Logger, procedure string, args []s
 func listToWampList(args []string) wamp.List {
 	var arguments wamp.List
 
-	if args == nil{
-		return append(arguments, "")
+	if args == nil {
+		return wamp.List{}
 	}
+
 	for _, value := range args {
 		arguments = append(arguments, value)
 	}
+
 	return arguments
 }
 
