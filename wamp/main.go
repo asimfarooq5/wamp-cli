@@ -28,6 +28,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/pbkdf2"
@@ -293,7 +294,12 @@ func Call(session *client.Client, logger *log.Logger, procedure string, args []s
 	if err != nil {
 		logger.Println("Failed to call ", err)
 	} else if result != nil {
-		fmt.Println(result.Arguments[0])
+		jsonString, err := json.MarshalIndent(result.Arguments[0], "", "    ")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Println(string(jsonString))
 	}
 }
 
