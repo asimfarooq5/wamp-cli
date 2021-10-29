@@ -45,6 +45,11 @@ import (
 )
 
 func connect(url string, cfg client.Config, logger *log.Logger) *client.Client {
+	if strings.HasPrefix(url, "rs") {
+		url = "tcp" + strings.TrimPrefix(url, "rs")
+	} else if strings.HasPrefix(url, "rss") {
+		url = "tcp" + strings.TrimPrefix(url, "rss")
+	}
 	baseUrl := url
 	if strings.HasPrefix(url, "rs") {
 		url = strings.Join([]string{"tcp", strings.TrimPrefix(strings.TrimSuffix(url, "rs"), "rs"), "tcp"}, "")
