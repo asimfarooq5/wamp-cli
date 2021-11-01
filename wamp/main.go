@@ -45,15 +45,12 @@ import (
 )
 
 func connect(url string, cfg client.Config, logger *log.Logger) *client.Client {
-	if strings.HasPrefix(url, "rs") {
+	baseUrl := url
+  if strings.HasPrefix(url, "rs") {
 		url = "tcp" + strings.TrimPrefix(url, "rs")
 	} else if strings.HasPrefix(url, "rss") {
 		url = "tcp" + strings.TrimPrefix(url, "rss")
-	}
-	baseUrl := url
-	if strings.HasPrefix(url, "rs") {
-		url = strings.Join([]string{"tcp", strings.TrimPrefix(strings.TrimSuffix(url, "rs"), "rs"), "tcp"}, "")
-	}
+  }
 	session, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
 		logger.Fatal(err)
@@ -307,7 +304,6 @@ func Call(session *client.Client, logger *log.Logger, procedure string, args []s
 		if err != nil {
 			log.Fatal(err)
 		}
-
 		fmt.Println(string(jsonString))
 	}
 }
@@ -339,29 +335,27 @@ func argsKWArgs(args wamp.List, kwArgs wamp.Dict) {
 		for index, value := range args {
 			if len(args) == 1 && value != "" {
 				fmt.Print("args : ")
-			}
+      }
 			if index != len(args)-1 {
 				fmt.Print(value, ", ")
 			} else {
-				fmt.Println(value)
+				fmt.Print(value)
+				fmt.Print(" ]\n")
 			}
 		}
 	} else {
 		fmt.Println()
 	}
-	i := 1
+
 	if len(kwArgs) != 0 {
-		fmt.Print("kwargs : ")
-		for key, value := range kwArgs {
-			if i == len(kwArgs) {
-				fmt.Print(key, "=", value, "\n")
-			} else {
-				fmt.Print(key, "=", value, ", ")
-			}
-			i++
+		fmt.Println("kwargs:")
+		jsonString, err := json.MarshalIndent(kwArgs, "", "    ")
+		if err != nil {
+			log.Fatal(err)
 		}
+		fmt.Println(string(jsonString))
 	} else {
-		fmt.Println("")
+		fmt.Println()
 	}
 }
 
