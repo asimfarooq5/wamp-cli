@@ -45,17 +45,18 @@ import (
 )
 
 func connect(url string, cfg client.Config, logger *log.Logger) *client.Client {
-	baseUrl := url
-  if strings.HasPrefix(url, "rs") {
+	//baseUrl := url
+	if strings.HasPrefix(url, "rs") {
 		url = "tcp" + strings.TrimPrefix(url, "rs")
 	} else if strings.HasPrefix(url, "rss") {
 		url = "tcp" + strings.TrimPrefix(url, "rss")
-  }
+	}
 	session, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
 		logger.Fatal(err)
 	} else {
-		logger.Println("Connected to ", baseUrl)
+		// FIXME: use a better logger and only print such messages in debug mode.
+		//logger.Println("Connected to ", baseUrl)
 	}
 
 	return session
@@ -332,19 +333,23 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 
 func argsKWArgs(args wamp.List, kwArgs wamp.Dict) {
 	if len(args) != 0 {
-		for index, value := range args {
-			if len(args) == 1 && value != "" {
-				fmt.Print("args : ")
-      }
-			if index != len(args)-1 {
-				fmt.Print(value, ", ")
-			} else {
-				fmt.Print(value)
-				fmt.Print(" ]\n")
-			}
+		fmt.Println("args:")
+		jsonString, err := json.MarshalIndent(args, "", "    ")
+		if err != nil {
+			log.Fatal(err)
 		}
-	} else {
-		fmt.Println()
+		fmt.Println(string(jsonString))
+		//for index, value := range args {
+		//	if len(args) == 1 && value != "" {
+		//		fmt.Print("args: ")
+		//	}
+		//	if index != len(args)-1 {
+		//		fmt.Print(value, ", ")
+		//	} else {
+		//		fmt.Print(value)
+		//		fmt.Print(" \n")
+		//	}
+		//}
 	}
 
 	if len(kwArgs) != 0 {
@@ -354,8 +359,6 @@ func argsKWArgs(args wamp.List, kwArgs wamp.Dict) {
 			log.Fatal(err)
 		}
 		fmt.Println(string(jsonString))
-	} else {
-		fmt.Println()
 	}
 }
 
