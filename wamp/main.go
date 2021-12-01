@@ -225,7 +225,7 @@ func Subscribe(session *client.Client, logger *log.Logger, topic string) {
 	if err != nil {
 		logger.Fatal("subscribe error:", err)
 	} else {
-		logger.Println("Subscribed to", topic)
+		fmt.Printf("Subscribed to topic '%s'\n", topic)
 	}
 	// Wait for CTRL-c or client close while handling events.
 	sigChan := make(chan os.Signal, 1)
@@ -249,9 +249,9 @@ func Publish(session *client.Client, logger *log.Logger, topic string, args []st
 	options := wamp.Dict{wamp.OptAcknowledge: true}
 	err := session.Publish(topic, options, listToWampList(args), dictToWampDict(kwargs))
 	if err != nil {
-		logger.Fatal("publish error:", err)
+		logger.Fatal("Publish error:", err)
 	} else {
-		logger.Println("Published", topic, "event")
+		fmt.Printf("Published to topic '%s'\n", topic)
 	}
 }
 
@@ -275,7 +275,7 @@ func Register(session *client.Client, logger *log.Logger, procedure string, comm
 	if err := session.Register(procedure, eventHandler, nil); err != nil {
 		logger.Fatal("Failed to register procedure:", err)
 	} else {
-		logger.Println("Registered procedure", procedure, "with router")
+		fmt.Printf("Registered procedure '%s'\n", procedure)
 	}
 
 	// Wait for CTRL-c or client close while handling remote procedure calls.
