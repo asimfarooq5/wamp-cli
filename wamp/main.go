@@ -246,7 +246,8 @@ func Subscribe(session *client.Client, logger *log.Logger, topic string) {
 func Publish(session *client.Client, logger *log.Logger, topic string, args []string, kwargs map[string]string) {
 
 	// Publish to topic.
-	err := session.Publish(topic, nil, listToWampList(args), dictToWampDict(kwargs))
+	options := wamp.Dict{wamp.OptAcknowledge: true}
+	err := session.Publish(topic, options, listToWampList(args), dictToWampDict(kwargs))
 	if err != nil {
 		logger.Fatal("publish error:", err)
 	} else {
@@ -297,6 +298,7 @@ func Register(session *client.Client, logger *log.Logger, procedure string, comm
 
 func Call(session *client.Client, logger *log.Logger, procedure string, args []string, kwargs map[string]string) {
 	ctx := context.Background()
+
 	result, err := session.Call(ctx, procedure, nil, listToWampList(args), dictToWampDict(kwargs), nil)
 	if err != nil {
 		logger.Println("Failed to call ", err)
@@ -313,7 +315,7 @@ func listToWampList(args []string) wamp.List {
 	var arguments wamp.List
 
 	if args == nil {
-		return arguments
+		return wamp.List{}
 	}
 
 	for _, value := range args {
