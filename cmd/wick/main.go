@@ -47,8 +47,6 @@ var (
 			Envar("WICK_SECRET").String()
 	privateKey = kingpin.Flag("private-key", "The ed25519 private key hex for cryptosign").
 			Envar("WICK_PRIVATE_KEY").String()
-	publicKey = kingpin.Flag("public-key", "The ed25519 public key hex for cryptosign").
-			Envar("WICK_PUBLIC_KEY").String()
 	ticket     = kingpin.Flag("ticket", "The ticket when using ticket authentication").
 		Envar("WICK_TICKET").String()
 	serializer = kingpin.Flag("serializer", "The serializer to use").Envar("WICK_SERIALIZER").
@@ -120,8 +118,7 @@ func main() {
 			println("Must provide private key when authMethod is cryptosign")
 			os.Exit(1)
 		}
-		session = wamp.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey, *publicKey,
-			logger)
+		session = wamp.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey, logger)
 	}
 
 	defer session.Close()

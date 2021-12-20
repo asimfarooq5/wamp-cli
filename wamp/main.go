@@ -167,7 +167,7 @@ func ConnectCRA(url string, realm string, serializer serialize.Serialization, au
 }
 
 func ConnectCryptoSign(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	privateKey string, publicKey string, logger *log.Logger) *client.Client {
+	privateKey string, logger *log.Logger) *client.Client {
 
 	helloDict := wamp.Dict{}
 	if authid != "" {
@@ -179,18 +179,18 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 	}
 
 	privkey, _ := hex.DecodeString(privateKey)
-	pvk := ed25519.NewKeyFromSeed(privkey)
-	key := pvk.Public().(ed25519.PublicKey)
-	pubKeyExtracted := hex.EncodeToString(key)
+	var pvk ed25519.PrivateKey
 
-	if publicKey == "" {
-		publicKey = pubKeyExtracted
+	if len(privkey) == 32 {
+		pvk = ed25519.NewKeyFromSeed(privkey)
+	} else if len(privkey) == 64 {
+		pvk = ed25519.NewKeyFromSeed(privkey[:32])
 	} else {
-		if publicKey != pubKeyExtracted {
-			logger.Fatal("Provided public-key does not correspond to the private key")
-		}
+		logger.Fatal("Invalid private key. Cryptosign private key must be either 32 or 64 characters long")
 	}
 
+	key := pvk.Public().(ed25519.PublicKey)
+	publicKey := hex.EncodeToString(key)
 	helloDict["authextra"] = wamp.Dict{"pubkey": publicKey}
 
 	cfg := client.Config{
