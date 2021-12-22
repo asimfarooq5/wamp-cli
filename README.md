@@ -17,7 +17,6 @@ Flags:
   --authrole=AUTHROLE        The authrole to use, if authenticating
   --secret=SECRET            The secret to use in Challenge-Response Auth.
   --private-key=PRIVATE-KEY  The ed25519 private key hex for cryptosign
-  --public-key=PUBLIC-KEY    The ed25519 public key hex for cryptosign
   --ticket=TICKET            The ticket when when ticket authentication
   --serializer=json          The serializer to use
 
