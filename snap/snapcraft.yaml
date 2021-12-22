@@ -19,9 +19,13 @@ parts:
   wick:
     plugin: go
     source: .
+    override-prime: |
+      snapcraftctl prime
+      cp $SNAPCRAFT_PART_SRC/wick_bash_autocomplete.sh $SNAPCRAFT_PRIME/
 
 apps:
   wick:
     command: bin/wick
+    completer: wick_bash_autocomplete.sh
     plugs:
       - network
