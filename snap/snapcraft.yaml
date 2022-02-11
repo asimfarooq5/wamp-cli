@@ -2,8 +2,8 @@ name: wick
 base: core20
 version: git
 compression: lzo
-summary: WAMP In Command-line
-description: WAMP In Command-line
+summary: WAMP In command-line
+description: WAMP In command-line
 
 architectures:
   - build-on: amd64
@@ -13,7 +13,7 @@ architectures:
     run-on: arm64
 
 grade: stable
-confinement: strict
+confinement: classic
 
 parts:
   wick:
