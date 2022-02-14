@@ -27,5 +27,3 @@ apps:
   wick:
     command: bin/wick
     completer: wick_bash_autocomplete.sh
-    plugs:
-      - network
