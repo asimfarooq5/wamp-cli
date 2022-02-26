@@ -5,21 +5,21 @@
 class Wick < Formula
   desc ""
   homepage "https://github.com/codebasepk/wick"
-  version "0.2.0"
+  version "0.3.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/codebasepk/wick/releases/download/v0.2.0/wick_0.2.0_macOS_arm64.tar.gz"
-      sha256 "9070a03e53901738e2ba08f0b6341c4185c680cce107015bec103258e54f01cb"
+      url "https://github.com/codebasepk/wick/releases/download/v0.3.0/wick_0.3.0_macOS_arm64.tar.gz"
+      sha256 "28d418e63de053b3b9b8c6b26657a7668d912a8f81d9827d36645bd3cf7f905d"
 
       def install
         bin.install "wick"
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/codebasepk/wick/releases/download/v0.2.0/wick_0.2.0_macOS_x86_64.tar.gz"
-      sha256 "6eecda7eb9283e76121470c079170ea3f10cf56a6045d246a93dfeaa46952983"
+      url "https://github.com/codebasepk/wick/releases/download/v0.3.0/wick_0.3.0_macOS_x86_64.tar.gz"
+      sha256 "e3e87e0a78129805191fe00862468cda97fae515f8262db73ad2aee4f2c3f570"
 
       def install
         bin.install "wick"
@@ -29,8 +29,8 @@ class Wick < Formula
 
   on_linux do
     if Hardware::CPU.intel?
-      url "https://github.com/codebasepk/wick/releases/download/v0.2.0/wick_0.2.0_Linux_x86_64.tar.gz"
-      sha256 "d8d23b2cb5a91a7721be355d3ff5a951be07cefff59a93dcf0f5ce33c85de4b6"
+      url "https://github.com/codebasepk/wick/releases/download/v0.3.0/wick_0.3.0_Linux_x86_64.tar.gz"
+      sha256 "e24e08a0a4f298fd38bf064c4470158fd2b3e7de40a9c8739211a8d7b27a680f"
 
       def install
         bin.install "wick"
