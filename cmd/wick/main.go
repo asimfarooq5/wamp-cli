@@ -84,6 +84,23 @@ func main() {
 	}
 
 	logger := log.New(os.Stdout, "", 0)
+
+	if *privateKey != "" && *ticket != "" {
+		logger.Fatal("Provide only one of private key, ticket or secret")
+	} else if *ticket != "" && *secret != "" {
+		logger.Fatal("Provide only one of private key, ticket or secret")
+	} else if *privateKey != "" && *secret != "" {
+		logger.Fatal("Provide only one of private key, ticket or secret")
+	}
+
+	if *privateKey != "" {
+		*authMethod = "cryptosign"
+	} else if *ticket != "" {
+		*authMethod = "ticket"
+	} else if *secret != "" {
+		*authMethod = "wampcra"
+	}
+
 	var session *client.Client
 
 	switch *authMethod {
