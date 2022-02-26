@@ -73,7 +73,7 @@ WICK_SERIALIZER
 ## How to install
 On Linux use snapd
 ```shell
-sudo snap install wick
+sudo snap install wick --classic
 ```
 On macOS use brew
 ```shell
