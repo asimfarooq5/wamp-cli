@@ -1,4 +1,4 @@
-module github.com/codebasepk/wick
+module github.com/s-things/wick
 
 go 1.17
 

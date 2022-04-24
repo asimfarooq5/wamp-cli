@@ -1,8 +1,8 @@
 deps:
-	go get github.com/codebasepk/wick/cmd/wick
+	go get github.com/s-things/wick/cmd/wick
 
 build:
-	go build github.com/codebasepk/wick/cmd/wick
+	go build github.com/s-things/wick/cmd/wick
 
 run:
 	./wick

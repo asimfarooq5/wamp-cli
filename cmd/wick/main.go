@@ -28,7 +28,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/codebasepk/wick/wamp"
+	"github.com/s-things/wick/wamp"
 )
 
 var (

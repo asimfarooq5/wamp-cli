@@ -77,15 +77,15 @@ sudo snap install wick --classic
 ```
 On macOS use brew
 ```shell
-brew tap codebasepk/wick https://github.com/codebasepk/wick
+brew tap s-things/wick https://github.com/s-things/wick
 brew install wick
 ```
 
 ## How to build
 ```bash
-git clone git@github.com:codebasepk/wick.git
+git clone git@github.com:s-things/wick.git
 cd wick
-go get github.com/codebasepk/wick/cmd/wick
-go build github.com/codebasepk/wick/cmd/wick
+go get github.com/s-things/wick/cmd/wick
+go build github.com/s-things/wick/cmd/wick
 ./wick
 ```
