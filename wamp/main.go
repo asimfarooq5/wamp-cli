@@ -215,10 +215,14 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 	return connect(url, cfg, logger)
 }
 
-func Subscribe(session *client.Client, logger *log.Logger, topic string, match string) {
+func Subscribe(session *client.Client, logger *log.Logger, topic string, match string, printDetails bool) {
 	// Define function to handle events received.
 	eventHandler := func(event *wamp.Event) {
-		argsKWArgs(event.Arguments, event.ArgumentsKw)
+		if printDetails {
+			argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details, logger)
+		} else {
+			argsKWArgs(event.Arguments, event.ArgumentsKw, nil, logger)
+		}
 	}
 
 	// Subscribe to topic.
@@ -260,7 +264,7 @@ func Publish(session *client.Client, logger *log.Logger, topic string, args []st
 func Register(session *client.Client, logger *log.Logger, procedure string, command string) {
 	eventHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
 
-		argsKWArgs(inv.Arguments, inv.ArgumentsKw)
+		argsKWArgs(inv.Arguments, inv.ArgumentsKw, nil, logger)
 
 		if command != "" {
 			err, out, _ := shellOut(command)
@@ -368,7 +372,11 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 	return keywordArguments
 }
 
-func argsKWArgs(args wamp.List, kwArgs wamp.Dict) {
+func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict, logger *log.Logger) {
+	if details != nil {
+		logger.Println(details)
+	}
+
 	if len(args) != 0 {
 		fmt.Println("args:")
 		jsonString, err := json.MarshalIndent(args, "", "    ")

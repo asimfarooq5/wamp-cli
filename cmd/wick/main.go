@@ -54,8 +54,9 @@ var (
 
 	subscribe      = kingpin.Command("subscribe", "subscribe a topic.")
 	subscribeTopic = subscribe.Arg("topic", "Topic to subscribe to").Required().String()
-	subscribeMatch = subscribe.Flag("match", "pattern to use for subscribe").Default("exact").
+	subscribeMatch = subscribe.Flag("match", "pattern to use for subscribe").Default(wamp2.MatchExact).
 		Enum(wamp2.MatchExact, wamp2.MatchPrefix, wamp2.MatchWildcard)
+	subscribePrintDetails = subscribe.Flag("details", "print event details").Bool()
 
 	publish            = kingpin.Command("publish", "Publish to a topic.")
 	publishTopic       = publish.Arg("topic", "topic name").Required().String()
@@ -141,7 +142,7 @@ func main() {
 
 	switch cmd {
 	case subscribe.FullCommand():
-		wamp.Subscribe(session, logger, *subscribeTopic, *subscribeMatch)
+		wamp.Subscribe(session, logger, *subscribeTopic, *subscribeMatch, *subscribePrintDetails)
 	case publish.FullCommand():
 		wamp.Publish(session, logger, *publishTopic, *publishArgs, *publishKeywordArgs)
 	case register.FullCommand():
