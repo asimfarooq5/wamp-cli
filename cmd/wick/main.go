@@ -25,6 +25,7 @@ package main
 import (
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/transport/serialize"
+	wamp2 "github.com/gammazero/nexus/v3/wamp"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
@@ -53,6 +54,8 @@ var (
 
 	subscribe      = kingpin.Command("subscribe", "subscribe a topic.")
 	subscribeTopic = subscribe.Arg("topic", "Topic to subscribe to").Required().String()
+	subscribeMatch = subscribe.Flag("match", "pattern to use for subscribe").Default("exact").
+		Enum(wamp2.MatchExact, wamp2.MatchPrefix, wamp2.MatchWildcard)
 
 	publish            = kingpin.Command("publish", "Publish to a topic.")
 	publishTopic       = publish.Arg("topic", "topic name").Required().String()
@@ -138,7 +141,7 @@ func main() {
 
 	switch cmd {
 	case subscribe.FullCommand():
-		wamp.Subscribe(session, logger, *subscribeTopic)
+		wamp.Subscribe(session, logger, *subscribeTopic, *subscribeMatch)
 	case publish.FullCommand():
 		wamp.Publish(session, logger, *publishTopic, *publishArgs, *publishKeywordArgs)
 	case register.FullCommand():

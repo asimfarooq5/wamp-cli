@@ -215,14 +215,15 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 	return connect(url, cfg, logger)
 }
 
-func Subscribe(session *client.Client, logger *log.Logger, topic string) {
+func Subscribe(session *client.Client, logger *log.Logger, topic string, match string) {
 	// Define function to handle events received.
 	eventHandler := func(event *wamp.Event) {
 		argsKWArgs(event.Arguments, event.ArgumentsKw)
 	}
 
 	// Subscribe to topic.
-	err := session.Subscribe(topic, eventHandler, nil)
+	options := wamp.Dict{wamp.OptMatch: match}
+	err := session.Subscribe(topic, eventHandler, options)
 	if err != nil {
 		logger.Fatal("subscribe error:", err)
 	} else {
