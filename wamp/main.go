@@ -32,9 +32,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/pbkdf2"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -47,7 +48,13 @@ import (
 	"github.com/gammazero/nexus/v3/wamp/crsign"
 )
 
-func connect(url string, cfg client.Config, logger *log.Logger) *client.Client {
+var logger *logrus.Logger
+
+func init() {
+	logger = logrus.New()
+}
+
+func connect(url string, cfg client.Config) *client.Client {
 	if strings.HasPrefix(url, "rs") {
 		url = "tcp" + strings.TrimPrefix(url, "rs")
 	} else if strings.HasPrefix(url, "rss") {
@@ -64,8 +71,8 @@ func connect(url string, cfg client.Config, logger *log.Logger) *client.Client {
 	return session
 }
 
-func ConnectAnonymous(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	logger *log.Logger) *client.Client {
+func ConnectAnonymous(url string, realm string, serializer serialize.Serialization, authid string,
+	authrole string) *client.Client {
 
 	helloDict := wamp.Dict{}
 	if authid != "" {
@@ -83,11 +90,11 @@ func ConnectAnonymous(url string, realm string, serializer serialize.Serializati
 		Serialization: serializer,
 	}
 
-	return connect(url, cfg, logger)
+	return connect(url, cfg)
 }
 
 func ConnectTicket(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	ticket string, logger *log.Logger) *client.Client {
+	ticket string) *client.Client {
 
 	helloDict := wamp.Dict{}
 	if authid != "" {
@@ -110,11 +117,11 @@ func ConnectTicket(url string, realm string, serializer serialize.Serialization,
 		Serialization: serializer,
 	}
 
-	return connect(url, cfg, logger)
+	return connect(url, cfg)
 }
 
 func ConnectCRA(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	secret string, logger *log.Logger) *client.Client {
+	secret string) *client.Client {
 
 	helloDict := wamp.Dict{}
 	if authid != "" {
@@ -165,11 +172,11 @@ func ConnectCRA(url string, realm string, serializer serialize.Serialization, au
 		Serialization: serializer,
 	}
 
-	return connect(url, cfg, logger)
+	return connect(url, cfg)
 }
 
 func ConnectCryptoSign(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	privateKey string, logger *log.Logger) *client.Client {
+	privateKey string) *client.Client {
 
 	helloDict := wamp.Dict{}
 	if authid != "" {
@@ -213,16 +220,16 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 		Serialization: serializer,
 	}
 
-	return connect(url, cfg, logger)
+	return connect(url, cfg)
 }
 
-func Subscribe(session *client.Client, logger *log.Logger, topic string, match string, printDetails bool) {
+func Subscribe(session *client.Client, topic string, match string, printDetails bool) {
 	// Define function to handle events received.
 	eventHandler := func(event *wamp.Event) {
 		if printDetails {
-			argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details, logger)
+			argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
 		} else {
-			argsKWArgs(event.Arguments, event.ArgumentsKw, nil, logger)
+			argsKWArgs(event.Arguments, event.ArgumentsKw, nil)
 		}
 	}
 
@@ -250,7 +257,7 @@ func Subscribe(session *client.Client, logger *log.Logger, topic string, match s
 	}
 }
 
-func Publish(session *client.Client, logger *log.Logger, topic string, args []string, kwargs map[string]string) {
+func Publish(session *client.Client, topic string, args []string, kwargs map[string]string) {
 
 	// Publish to topic.
 	options := wamp.Dict{wamp.OptAcknowledge: true}
@@ -262,10 +269,10 @@ func Publish(session *client.Client, logger *log.Logger, topic string, args []st
 	}
 }
 
-func Register(session *client.Client, logger *log.Logger, procedure string, command string) {
+func Register(session *client.Client, procedure string, command string) {
 	eventHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
 
-		argsKWArgs(inv.Arguments, inv.ArgumentsKw, nil, logger)
+		argsKWArgs(inv.Arguments, inv.ArgumentsKw, nil)
 
 		if command != "" {
 			err, out, _ := shellOut(command)
@@ -303,7 +310,7 @@ func Register(session *client.Client, logger *log.Logger, procedure string, comm
 
 }
 
-func Call(session *client.Client, logger *log.Logger, procedure string, args []string, kwargs map[string]string) {
+func Call(session *client.Client, procedure string, args []string, kwargs map[string]string) {
 	ctx := context.Background()
 
 	result, err := session.Call(ctx, procedure, nil, listToWampList(args), dictToWampDict(kwargs), nil)
@@ -373,7 +380,7 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 	return keywordArguments
 }
 
-func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict, logger *log.Logger) {
+func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) {
 	if details != nil {
 		logger.Println(details)
 	}

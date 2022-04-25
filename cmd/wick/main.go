@@ -27,11 +27,11 @@ package main
 import (
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/transport/serialize"
-	wamp2 "github.com/gammazero/nexus/v3/wamp"
-	log "github.com/sirupsen/logrus"
+	"github.com/gammazero/nexus/v3/wamp"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/s-things/wick/wamp"
+	wick "github.com/s-things/wick/wamp"
 )
 
 var (
@@ -56,8 +56,8 @@ var (
 
 	subscribe      = kingpin.Command("subscribe", "subscribe a topic.")
 	subscribeTopic = subscribe.Arg("topic", "Topic to subscribe to").Required().String()
-	subscribeMatch = subscribe.Flag("match", "pattern to use for subscribe").Default(wamp2.MatchExact).
-		Enum(wamp2.MatchExact, wamp2.MatchPrefix, wamp2.MatchWildcard)
+	subscribeMatch = subscribe.Flag("match", "pattern to use for subscribe").Default(wamp.MatchExact).
+		Enum(wamp.MatchExact, wamp.MatchPrefix, wamp.MatchWildcard)
 	subscribePrintDetails = subscribe.Flag("details", "print event details").Bool()
 
 	publish            = kingpin.Command("publish", "Publish to a topic.")
@@ -91,7 +91,7 @@ func main() {
 		serializerToUse = serialize.CBOR
 	}
 
-	logger := log.New()
+	logger := logrus.New()
 
 	if *privateKey != "" && *ticket != "" {
 		logger.Fatal("Provide only one of private key, ticket or secret")
@@ -122,34 +122,34 @@ func main() {
 		if *secret != "" {
 			logger.Fatal("secret not needed for anonymous auth")
 		}
-		session = wamp.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole, logger)
+		session = wick.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole)
 	case "ticket":
 		if *ticket == "" {
 			logger.Fatal("Must provide ticket when authMethod is ticket")
 		}
-		session = wamp.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket, logger)
+		session = wick.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket)
 	case "wampcra":
 		if *secret == "" {
 			logger.Fatal("Must provide secret when authMethod is wampcra")
 		}
-		session = wamp.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret, logger)
+		session = wick.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret)
 	case "cryptosign":
 		if *privateKey == "" {
 			logger.Fatal("Must provide private key when authMethod is cryptosign")
 		}
-		session = wamp.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey, logger)
+		session = wick.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey)
 	}
 
 	defer session.Close()
 
 	switch cmd {
 	case subscribe.FullCommand():
-		wamp.Subscribe(session, logger, *subscribeTopic, *subscribeMatch, *subscribePrintDetails)
+		wick.Subscribe(session, *subscribeTopic, *subscribeMatch, *subscribePrintDetails)
 	case publish.FullCommand():
-		wamp.Publish(session, logger, *publishTopic, *publishArgs, *publishKeywordArgs)
+		wick.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs)
 	case register.FullCommand():
-		wamp.Register(session, logger, *registerProcedure, *onInvocationCmd)
+		wick.Register(session, *registerProcedure, *onInvocationCmd)
 	case call.FullCommand():
-		wamp.Call(session, logger, *callProcedure, *callArgs, *callKeywordArgs)
+		wick.Call(session, *callProcedure, *callArgs, *callKeywordArgs)
 	}
 }
