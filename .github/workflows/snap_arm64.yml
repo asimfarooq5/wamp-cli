@@ -1,4 +1,4 @@
-name: build arm64 snap
+name: build-arm64-snap
 
 on:
   push:

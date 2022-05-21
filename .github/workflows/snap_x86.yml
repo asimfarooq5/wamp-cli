@@ -1,5 +1,4 @@
-
-name: build snap
+name: build-x86-snap
 
 on:
   push:

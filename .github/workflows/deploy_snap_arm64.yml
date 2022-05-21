@@ -1,9 +1,10 @@
-name: deploy arm64 snap
+name: deploy-arm64-snap
 
 on:
   workflow_run:
     workflows:
       - snap_arm64
+      - main
     branches:
       - main
     types:
