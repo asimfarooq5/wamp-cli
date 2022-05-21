@@ -20,7 +20,7 @@ jobs:
         run: snapcraft --use-lxd
 
       - name: copy build artifacts
-        if: ${{ github.event_name == 'merged' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: |
           mkdir -p ~/ci-artifacts
           cp wick_*.snap ~/ci-artifacts/wick_arm64.snap
