@@ -21,4 +21,4 @@ jobs:
     steps:
       - name: deploy
         run: |
-          snapcraft upload ~/ci-artifacts/wick_arm64.snap --release edge
+          snapcraft upload $(realpath /tmp/ci-artifacts-arm64/wick_*.snap) --release edge
