@@ -270,21 +270,38 @@ func Publish(session *client.Client, topic string, args []string, kwargs map[str
 	}
 }
 
-func Register(session *client.Client, procedure string, command string, delay int) {
+func Register(session *client.Client, procedure string, command string, delay int, invokeCount int) {
+
+	// If the user has called with --invoke-count
+	hasMaxInvokeCount := invokeCount > 0
+
 	eventHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
 
 		argsKWArgs(inv.Arguments, inv.ArgumentsKw, nil)
+
+		result := ""
 
 		if command != "" {
 			err, out, _ := shellOut(command)
 			if err != nil {
 				logger.Println("error: ", err)
 			}
-
-			return client.InvokeResult{Args: wamp.List{out}}
+			result = out
 		}
 
-		return client.InvokeResult{Args: wamp.List{""}}
+		if hasMaxInvokeCount {
+			invokeCount--
+			if invokeCount == 0 {
+				session.Unregister(procedure)
+				time.AfterFunc(1*time.Second, func() {
+					logger.Println("session closing")
+					session.Close()
+				})
+			}
+		}
+
+		return client.InvokeResult{Args: wamp.List{result}}
+
 	}
 
 	if delay > 0 {
