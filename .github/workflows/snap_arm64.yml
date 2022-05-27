@@ -22,5 +22,6 @@ jobs:
       - name: copy build artifacts
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: |
+          rm -rf /tmp/ci-artifacts-arm64
           mkdir -p /tmp/ci-artifacts-arm64
           cp $(realpath wick_*.snap) /tmp/ci-artifacts-arm64
