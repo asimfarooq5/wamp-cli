@@ -30,6 +30,7 @@ import (
 	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"time"
 
 	"github.com/s-things/wick/core"
 )
@@ -117,6 +118,8 @@ func main() {
 
 	var session *client.Client
 
+	startTime := time.Now().UnixMilli()
+
 	switch *authMethod {
 	case "anonymous":
 		if *privateKey != "" {
@@ -144,6 +147,11 @@ func main() {
 			logger.Fatal("Must provide private key when authMethod is cryptosign")
 		}
 		session = core.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey)
+	}
+
+	if *logCallTime {
+		endTime := time.Now().UnixMilli()
+		logger.Printf("session joined in %dms\n", endTime-startTime)
 	}
 
 	defer session.Close()
