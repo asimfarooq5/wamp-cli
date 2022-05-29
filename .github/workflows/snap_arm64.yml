@@ -17,7 +17,9 @@ jobs:
         uses: actions/checkout@v2
 
       - name: build snap
-        run: snapcraft --use-lxd
+        run: |
+          snapcraft clean --use-lxd wick
+          snapcraft --use-lxd
 
       - name: copy build artifacts
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
