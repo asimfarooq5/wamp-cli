@@ -80,6 +80,8 @@ var (
 	logCallTime     = call.Flag("time", "log call return time").Bool()
 	repeatCount     = call.Flag("repeat", "call the procedure for the provided number of times").Default("1").Int()
 	delayCall       = call.Flag("delay", "provide the delay in milliseconds").Default("0").Int()
+	parallelCall    = call.Flag("parallel", "call the procedure parallel without waiting for the result to return. " +
+		"Only effective when called with --repeat").Bool()
 )
 
 const versionString = "0.4.0-dev"
@@ -167,6 +169,7 @@ func main() {
 		if *repeatCount < 1 {
 			logger.Fatal("repeat count must be greater than zero")
 		}
-		core.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall)
+		core.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall,
+			*parallelCall)
 	}
 }
