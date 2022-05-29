@@ -25,28 +25,18 @@
 package core
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/crypto/ed25519"
-	"golang.org/x/crypto/pbkdf2"
-	"log"
 	"os"
-	"os/exec"
 	"os/signal"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/transport/serialize"
 	"github.com/gammazero/nexus/v3/wamp"
-	"github.com/gammazero/nexus/v3/wamp/crsign"
 )
 
 var logger *logrus.Logger
@@ -75,21 +65,7 @@ func connect(url string, cfg client.Config) *client.Client {
 func ConnectAnonymous(url string, realm string, serializer serialize.Serialization, authid string,
 	authrole string) *client.Client {
 
-	helloDict := wamp.Dict{}
-	if authid != "" {
-		helloDict["authid"] = authid
-	}
-
-	if authrole != "" {
-		helloDict["authrole"] = authrole
-	}
-
-	cfg := client.Config{
-		Realm:         realm,
-		Logger:        logger,
-		HelloDetails:  helloDict,
-		Serialization: serializer,
-	}
+	cfg := getAnonymousAuthConfig(realm, serializer, authid, authrole)
 
 	return connect(url, cfg)
 }
@@ -97,26 +73,7 @@ func ConnectAnonymous(url string, realm string, serializer serialize.Serializati
 func ConnectTicket(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
 	ticket string) *client.Client {
 
-	helloDict := wamp.Dict{}
-	if authid != "" {
-		helloDict["authid"] = authid
-	}
-
-	if authrole != "" {
-		helloDict["authrole"] = authrole
-	}
-
-	cfg := client.Config{
-		Realm:        realm,
-		Logger:       logger,
-		HelloDetails: helloDict,
-		AuthHandlers: map[string]client.AuthFunc{
-			"ticket": func(c *wamp.Challenge) (string, wamp.Dict) {
-				return ticket, wamp.Dict{}
-			},
-		},
-		Serialization: serializer,
-	}
+	cfg := getTicketAuthConfig(realm, serializer, authid, authrole, ticket)
 
 	return connect(url, cfg)
 }
@@ -124,54 +81,7 @@ func ConnectTicket(url string, realm string, serializer serialize.Serialization,
 func ConnectCRA(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
 	secret string) *client.Client {
 
-	helloDict := wamp.Dict{}
-	if authid != "" {
-		helloDict["authid"] = authid
-	}
-
-	if authrole != "" {
-		helloDict["authrole"] = authrole
-	}
-
-	cfg := client.Config{
-		Realm:        realm,
-		Logger:       logger,
-		HelloDetails: helloDict,
-		AuthHandlers: map[string]client.AuthFunc{
-			"wampcra": func(c *wamp.Challenge) (string, wamp.Dict) {
-				ch, _ := wamp.AsString(c.Extra["challenge"])
-				// If the client needed to lookup a user's key, this would require decoding
-				// the JSON-encoded challenge string and getting the authid.  For this
-				// example assume that client only operates as one user and knows the key
-				// to use.
-				saltStr, _ := wamp.AsString(c.Extra["salt"])
-				// If no salt given, use raw password as key.
-				if saltStr == "" {
-					return crsign.SignChallenge(ch, []byte(secret)), wamp.Dict{}
-				}
-
-				// If salting info give, then compute a derived key using PBKDF2.
-				salt := []byte(saltStr)
-				iters, _ := wamp.AsInt64(c.Extra["iterations"])
-				keylen, _ := wamp.AsInt64(c.Extra["keylen"])
-
-				if iters == 0 {
-					iters = 1000
-				}
-				if keylen == 0 {
-					keylen = 32
-				}
-
-				// Compute derived key.
-				dk := pbkdf2.Key([]byte(secret), salt, int(iters), int(keylen), sha256.New)
-				// Get base64 bytes. see https://github.com/gammazero/nexus/issues/252
-				derivedKey := []byte(base64.StdEncoding.EncodeToString(dk))
-
-				return crsign.SignChallenge(ch, derivedKey), wamp.Dict{}
-			},
-		},
-		Serialization: serializer,
-	}
+	cfg := getCRAAuthConfig(realm, serializer, authid, authrole, secret)
 
 	return connect(url, cfg)
 }
@@ -179,47 +89,7 @@ func ConnectCRA(url string, realm string, serializer serialize.Serialization, au
 func ConnectCryptoSign(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
 	privateKey string) *client.Client {
 
-	helloDict := wamp.Dict{}
-	if authid != "" {
-		helloDict["authid"] = authid
-	}
-
-	if authrole != "" {
-		helloDict["authrole"] = authrole
-	}
-
-	privkey, _ := hex.DecodeString(privateKey)
-	var pvk ed25519.PrivateKey
-
-	if len(privkey) == 32 {
-		pvk = ed25519.NewKeyFromSeed(privkey)
-	} else if len(privkey) == 64 {
-		pvk = ed25519.NewKeyFromSeed(privkey[:32])
-	} else {
-		logger.Fatal("Invalid private key. Cryptosign private key must be either 32 or 64 characters long")
-	}
-
-	key := pvk.Public().(ed25519.PublicKey)
-	publicKey := hex.EncodeToString(key)
-	helloDict["authextra"] = wamp.Dict{"pubkey": publicKey}
-
-	cfg := client.Config{
-		Realm:        realm,
-		Logger:       logger,
-		HelloDetails: helloDict,
-		AuthHandlers: map[string]client.AuthFunc{
-			"cryptosign": func(c *wamp.Challenge) (string, wamp.Dict) {
-				challengeHex, _ := wamp.AsString(c.Extra["challenge"])
-				challengeBytes, _ := hex.DecodeString(challengeHex)
-
-				signed := ed25519.Sign(pvk, challengeBytes)
-				signedHex := hex.EncodeToString(signed)
-				result := signedHex + challengeHex
-				return result, wamp.Dict{}
-			},
-		},
-		Serialization: serializer,
-	}
+	cfg := getCryptosignAuthConfig(realm, serializer, authid, authrole, privateKey)
 
 	return connect(url, cfg)
 }
@@ -362,99 +232,4 @@ func Call(session *client.Client, procedure string, args []string, kwargs map[st
 		endTime := time.Now().UnixMilli()
 		logger.Printf("%d calls took %dms\n", repeatCount, endTime-startTime)
 	}
-}
-
-func listToWampList(args []string) wamp.List {
-	var arguments wamp.List
-
-	if args == nil {
-		return wamp.List{}
-	}
-
-	for _, value := range args {
-
-		var mapJson map[string]interface{}
-		var mapList []map[string]interface{}
-
-		if number, errNumber := strconv.Atoi(value); errNumber == nil {
-			arguments = append(arguments, number)
-		} else if float, errFloat := strconv.ParseFloat(value, 64); errFloat == nil {
-			arguments = append(arguments, float)
-		} else if boolean, errBoolean := strconv.ParseBool(value); errBoolean == nil {
-			arguments = append(arguments, boolean)
-		} else if errJson := json.Unmarshal([]byte(value), &mapJson); errJson == nil {
-			arguments = append(arguments, mapJson)
-		} else if errList := json.Unmarshal([]byte(value), &mapList); errList == nil {
-			arguments = append(arguments, mapList)
-		} else {
-			arguments = append(arguments, value)
-		}
-	}
-
-	return arguments
-}
-
-func dictToWampDict(kwargs map[string]string) wamp.Dict {
-	var keywordArguments wamp.Dict = make(map[string]interface{})
-
-	for key, value := range kwargs {
-
-		var mapJson map[string]interface{}
-		var mapList []map[string]interface{}
-
-		if number, errNumber := strconv.Atoi(value); errNumber == nil {
-			keywordArguments[key] = number
-		} else if float, errFloat := strconv.ParseFloat(value, 64); errFloat == nil {
-			keywordArguments[key] = float
-		} else if boolean, errBoolean := strconv.ParseBool(value); errBoolean == nil {
-			keywordArguments[key] = boolean
-		} else if errJson := json.Unmarshal([]byte(value), &mapJson); errJson == nil {
-			keywordArguments[key] = mapJson
-		} else if errList := json.Unmarshal([]byte(value), &mapList); errList == nil {
-			keywordArguments[key] = mapList
-		} else {
-			keywordArguments[key] = value
-		}
-	}
-	return keywordArguments
-}
-
-func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) {
-	if details != nil {
-		logger.Println(details)
-	}
-
-	if len(args) != 0 {
-		fmt.Println("args:")
-		jsonString, err := json.MarshalIndent(args, "", "    ")
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println(string(jsonString))
-	}
-
-	if len(kwArgs) != 0 {
-		fmt.Println("kwargs:")
-		jsonString, err := json.MarshalIndent(kwArgs, "", "    ")
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println(string(jsonString))
-	}
-
-	if len(args) == 0 && len(kwArgs) == 0 {
-		fmt.Println("args: []")
-		fmt.Println("kwargs: {}")
-	}
-}
-
-func shellOut(command string) (error, string, string) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	var cmd *exec.Cmd
-	cmd = exec.Command("bash", "-c", command)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return err, stdout.String(), stderr.String()
 }
