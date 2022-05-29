@@ -31,7 +31,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	wick "github.com/s-things/wick/wamp"
+	"github.com/s-things/wick/core"
 )
 
 var (
@@ -81,7 +81,7 @@ var (
 	delayCall       = call.Flag("delay", "provide the delay in milliseconds").Default("0").Int()
 )
 
-const versionString = "0.3.0"
+const versionString = "0.4.0-dev"
 
 func main() {
 	kingpin.Version(versionString).VersionFlag.Short('v')
@@ -128,37 +128,37 @@ func main() {
 		if *secret != "" {
 			logger.Fatal("secret not needed for anonymous auth")
 		}
-		session = wick.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole)
+		session = core.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole)
 	case "ticket":
 		if *ticket == "" {
 			logger.Fatal("Must provide ticket when authMethod is ticket")
 		}
-		session = wick.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket)
+		session = core.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket)
 	case "wampcra":
 		if *secret == "" {
 			logger.Fatal("Must provide secret when authMethod is wampcra")
 		}
-		session = wick.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret)
+		session = core.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret)
 	case "cryptosign":
 		if *privateKey == "" {
 			logger.Fatal("Must provide private key when authMethod is cryptosign")
 		}
-		session = wick.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey)
+		session = core.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey)
 	}
 
 	defer session.Close()
 
 	switch cmd {
 	case subscribe.FullCommand():
-		wick.Subscribe(session, *subscribeTopic, *subscribeMatch, *subscribePrintDetails)
+		core.Subscribe(session, *subscribeTopic, *subscribeMatch, *subscribePrintDetails)
 	case publish.FullCommand():
-		wick.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs)
+		core.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs)
 	case register.FullCommand():
-		wick.Register(session, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions)
+		core.Register(session, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions)
 	case call.FullCommand():
 		if *repeatCount < 1 {
 			logger.Fatal("repeat count must be greater than zero")
 		}
-		wick.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall)
+		core.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall)
 	}
 }

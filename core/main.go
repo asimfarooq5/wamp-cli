@@ -22,7 +22,7 @@
 *
  */
 
-package wamp
+package core
 
 import (
 	"bytes"
