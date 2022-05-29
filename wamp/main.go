@@ -333,12 +333,15 @@ func Register(session *client.Client, procedure string, command string, delay in
 
 }
 
-func Call(session *client.Client, procedure string, args []string, kwargs map[string]string, logCallTime bool, repeatCount int) {
+func Call(session *client.Client, procedure string, args []string, kwargs map[string]string,
+	logCallTime bool, repeatCount int, delayCall int) {
+
 	ctx := context.Background()
 
 	startTime := time.Now().UnixMilli()
 
 	for i := 0; i < repeatCount; i++ {
+		time.Sleep(time.Duration(delayCall) * time.Millisecond)
 		startTime := time.Now().UnixMilli()
 		result, err := session.Call(ctx, procedure, nil, listToWampList(args), dictToWampDict(kwargs), nil)
 		if err != nil {

@@ -78,6 +78,7 @@ var (
 	callKeywordArgs = call.Flag("kwarg", "give the keyword arguments").Short('k').StringMap()
 	logCallTime     = call.Flag("time", "log call return time").Bool()
 	repeatCount     = call.Flag("repeat", "call the procedure for the provided number of times").Default("1").Int()
+	delayCall       = call.Flag("delay", "provide the delay in milliseconds").Default("0").Int()
 )
 
 const versionString = "0.3.0"
@@ -145,10 +146,6 @@ func main() {
 		session = wick.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey)
 	}
 
-	if *repeatCount < 1 {
-		logger.Fatal("repeat count must be greater than zero")
-	}
-
 	defer session.Close()
 
 	switch cmd {
@@ -159,6 +156,9 @@ func main() {
 	case register.FullCommand():
 		wick.Register(session, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions)
 	case call.FullCommand():
-		wick.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount)
+		if *repeatCount < 1 {
+			logger.Fatal("repeat count must be greater than zero")
+		}
+		wick.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall)
 	}
 }
