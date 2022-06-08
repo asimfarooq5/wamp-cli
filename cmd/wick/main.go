@@ -88,7 +88,7 @@ var (
 		"Only effective when called with --repeat.").Default("1").Int()
 )
 
-const versionString = "0.4.0-dev"
+const versionString = "0.5.0"
 
 func main() {
 	kingpin.Version(versionString).VersionFlag.Short('v')
