@@ -66,8 +66,8 @@ var (
 	repeatPublish      = publish.Flag("repeat", "Publish to the topic for the provided number of times.").Default("1").Int()
 	logPublishTime     = publish.Flag("time", "Log publish return time.").Bool()
 	delayPublish       = publish.Flag("delay", "Provide the delay in milliseconds.").Default("0").Int()
-	parallelPublish    = publish.Flag("parallel", "Publish the topic parallel without waiting for the result to return. "+
-		"Only effective when called with --repeat.").Bool()
+	concurrentPublish  = publish.Flag("concurrency", "Publish to the topic concurrently. "+
+		"Only effective when called with --repeat.").Default("1").Int()
 
 	register          = kingpin.Command("register", "Register a procedure.")
 	registerProcedure = register.Arg("procedure", "Procedure name.").Required().String()
@@ -161,7 +161,7 @@ func main() {
 			logger.Fatal("repeat count must be greater than zero")
 		}
 		core.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs, *publishOptions, *logPublishTime,
-			*repeatPublish, *delayPublish, *parallelPublish)
+			*repeatPublish, *delayPublish, *concurrentPublish)
 	case register.FullCommand():
 		core.Register(session, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions)
 	case call.FullCommand():
