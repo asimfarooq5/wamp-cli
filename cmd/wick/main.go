@@ -25,10 +25,11 @@
 package main
 
 import (
-	"github.com/gammazero/nexus/v3/client"
-	"github.com/sirupsen/logrus"
-	"gopkg.in/alecthomas/kingpin.v2"
 	"time"
+
+	"github.com/gammazero/nexus/v3/client"
+	log "github.com/sirupsen/logrus"
+	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/s-things/wick/core"
 )
@@ -97,18 +98,16 @@ func main() {
 
 	serializerToUse := getSerializerByName(*serializer)
 
-	logger := logrus.New()
-
 	if *profile != "" {
-		readFromProfile(logger)
+		readFromProfile()
 	}
 
 	if *privateKey != "" && *ticket != "" {
-		logger.Fatal("Provide only one of private key, ticket or secret")
+		log.Fatal("Provide only one of private key, ticket or secret")
 	} else if *ticket != "" && *secret != "" {
-		logger.Fatal("Provide only one of private key, ticket or secret")
+		log.Fatal("Provide only one of private key, ticket or secret")
 	} else if *privateKey != "" && *secret != "" {
-		logger.Fatal("Provide only one of private key, ticket or secret")
+		log.Fatal("Provide only one of private key, ticket or secret")
 	}
 
 	// auto decide authmethod if user didn't explicitly request
@@ -117,6 +116,7 @@ func main() {
 	}
 
 	var session *client.Client
+	var err error
 	var startTime int64
 
 	if *logCallTime {
@@ -125,55 +125,79 @@ func main() {
 	switch *authMethod {
 	case "anonymous":
 		if *privateKey != "" {
-			logger.Fatal("Private key not needed for anonymous auth")
+			log.Fatal("Private key not needed for anonymous auth")
 		}
 		if *ticket != "" {
-			logger.Fatal("ticket not needed for anonymous auth")
+			log.Fatal("ticket not needed for anonymous auth")
 		}
 		if *secret != "" {
-			logger.Fatal("secret not needed for anonymous auth")
+			log.Fatal("secret not needed for anonymous auth")
 		}
-		session = core.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole)
+		session, err = core.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole)
+		if err != nil {
+			log.Fatal(err)
+		}
 	case "ticket":
 		if *ticket == "" {
-			logger.Fatal("Must provide ticket when authMethod is ticket")
+			log.Fatal("Must provide ticket when authMethod is ticket")
 		}
-		session = core.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket)
+		session, err = core.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket)
+		if err != nil {
+			log.Fatal(err)
+		}
 	case "wampcra":
 		if *secret == "" {
-			logger.Fatal("Must provide secret when authMethod is wampcra")
+			log.Fatal("Must provide secret when authMethod is wampcra")
 		}
-		session = core.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret)
+		session, err = core.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret)
+		if err != nil {
+			log.Fatal(err)
+		}
 	case "cryptosign":
 		if *privateKey == "" {
-			logger.Fatal("Must provide private key when authMethod is cryptosign")
+			log.Fatal("Must provide private key when authMethod is cryptosign")
 		}
-		session = core.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey)
+		session, err = core.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	if *logCallTime {
 		endTime := time.Now().UnixMilli()
-		logger.Printf("session joined in %dms\n", endTime-startTime)
+		log.Printf("session joined in %dms\n", endTime-startTime)
 	}
 
 	defer session.Close()
 
 	switch cmd {
 	case subscribe.FullCommand():
-		core.Subscribe(session, *subscribeTopic, *subscribeOptions, *subscribePrintDetails)
+		err = core.Subscribe(session, *subscribeTopic, *subscribeOptions, *subscribePrintDetails)
+		if err != nil {
+			log.Fatal(err)
+		}
 	case publish.FullCommand():
 		if *repeatPublish < 1 {
-			logger.Fatal("repeat count must be greater than zero")
+			log.Fatal("repeat count must be greater than zero")
 		}
-		core.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs, *publishOptions, *logPublishTime,
+		err = core.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs, *publishOptions, *logPublishTime,
 			*repeatPublish, *delayPublish, *concurrentPublish)
+		if err != nil {
+			log.Fatal(err)
+		}
 	case register.FullCommand():
-		core.Register(session, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions)
+		err = core.Register(session, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions)
+		if err != nil {
+			log.Fatal(err)
+		}
 	case call.FullCommand():
 		if *repeatCount < 1 {
-			logger.Fatal("repeat count must be greater than zero")
+			log.Fatal("repeat count must be greater than zero")
 		}
-		core.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall,
+		err = core.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall,
 			*concurrentCalls, *callOptions)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }

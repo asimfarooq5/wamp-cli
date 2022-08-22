@@ -26,11 +26,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/gammazero/nexus/v3/transport/serialize"
-	"github.com/sirupsen/logrus"
-	"gopkg.in/ini.v1"
 	"os"
 	"runtime"
+
+	"github.com/gammazero/nexus/v3/transport/serialize"
+	log "github.com/sirupsen/logrus"
+	"gopkg.in/ini.v1"
 )
 
 func getSerializerByName(name string) serialize.Serialization {
@@ -74,15 +75,15 @@ func userHomeDir() string {
 	return os.Getenv("HOME")
 }
 
-func readFromProfile(logger *logrus.Logger) {
+func readFromProfile() {
 	cfg, err := ini.Load(fmt.Sprintf("%s/.wick/config", userHomeDir()))
 	if err != nil {
-		logger.Fatalf("Fail to read config: %v", err)
+		log.Fatalf("Fail to read config: %v", err)
 	}
 
 	section, err := cfg.GetSection(*profile)
 	if err != nil {
-		logger.Fatalf("Error in getting section: %s", err)
+		log.Fatalf("Error in getting section: %s", err)
 	}
 
 	*url = section.Key("url").Validate(func(s string) string {

@@ -50,4 +50,30 @@ func TestUrlSanitization(t *testing.T) {
 	if !strings.HasPrefix(url, "tcp") {
 		t.Error("url sanitization failed")
 	}
+
+	url = sanitizeURL("rss://localhost:8080/")
+	if !strings.HasPrefix(url, "tcp") {
+		t.Error("url sanitization failed")
+	}
+}
+
+func TestListToWampList(t *testing.T) {
+	inputList := []string{"string", "1", "1.1", "true"}
+	wampList := listToWampList(inputList)
+
+	if len(wampList) != len(inputList) {
+		t.Error("error in list conversion")
+	}
+
+	if _, canConvert := wampList[1].(int); canConvert == false {
+		t.Error("error in list conversion")
+	}
+
+	if _, canConvert := wampList[2].(float64); canConvert == false {
+		t.Error("error in list conversion")
+	}
+
+	if _, canConvert := wampList[3].(bool); canConvert == false {
+		t.Error("error in list conversion")
+	}
 }

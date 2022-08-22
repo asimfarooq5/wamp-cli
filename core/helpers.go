@@ -26,14 +26,18 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/gammazero/nexus/v3/wamp"
-	"golang.org/x/crypto/ed25519"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/gammazero/nexus/v3/client"
+	"github.com/gammazero/nexus/v3/wamp"
+	"golang.org/x/crypto/ed25519"
 )
 
 func listToWampList(args []string) wamp.List {
@@ -89,6 +93,51 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 		}
 	}
 	return keywordArguments
+}
+
+func subscribeEventHandler(printDetails bool) func(event *wamp.Event) {
+	eventHandler := func(event *wamp.Event) {
+		if printDetails {
+			argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
+		} else {
+			argsKWArgs(event.Arguments, event.ArgumentsKw, nil)
+		}
+	}
+	return eventHandler
+}
+
+func registerInvocationHandler(session *client.Client, procedure string, command string,
+	invokeCount int, hasMaxInvokeCount bool) func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
+
+	invocationHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
+
+		argsKWArgs(inv.Arguments, inv.ArgumentsKw, nil)
+
+		result := ""
+
+		if command != "" {
+			err, out, _ := shellOut(command)
+			if err != nil {
+				logger.Println("error: ", err)
+			}
+			result = out
+		}
+
+		if hasMaxInvokeCount {
+			invokeCount--
+			if invokeCount == 0 {
+				session.Unregister(procedure)
+				time.AfterFunc(1*time.Second, func() {
+					logger.Println("session closing")
+					session.Close()
+				})
+			}
+		}
+
+		return client.InvokeResult{Args: wamp.List{result}}
+
+	}
+	return invocationHandler
 }
 
 func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) {
@@ -174,4 +223,18 @@ func sanitizeURL(url string) string {
 		return "tcp" + strings.TrimPrefix(url, "rss")
 	}
 	return url
+}
+
+func getErrorFromErrorChannel(resC chan error) error {
+	close(resC)
+	var errs []string
+	for err := range resC {
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("- %v", err))
+		}
+	}
+	if len(errs) != 0 {
+		return fmt.Errorf("got errors:\n%v", strings.Join(errs, "\n"))
+	}
+	return nil
 }

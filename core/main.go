@@ -28,7 +28,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
 	"sync"
@@ -37,6 +36,7 @@ import (
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/transport/serialize"
 	"github.com/gammazero/nexus/v3/wamp"
+	"github.com/sirupsen/logrus"
 )
 
 var logger *logrus.Logger
@@ -45,23 +45,23 @@ func init() {
 	logger = logrus.New()
 }
 
-func connect(url string, cfg client.Config) *client.Client {
+func connect(url string, cfg client.Config) (*client.Client, error) {
 
 	url = sanitizeURL(url)
 
 	session, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
-		logger.Fatal(err)
+		return nil, err
 	} else {
 		// FIXME: use a better logger and only print such messages in debug mode.
 		//logger.Println("Connected to ", baseUrl)
 	}
 
-	return session
+	return session, nil
 }
 
 func ConnectAnonymous(url string, realm string, serializer serialize.Serialization, authid string,
-	authrole string) *client.Client {
+	authrole string) (*client.Client, error) {
 
 	cfg := getAnonymousAuthConfig(realm, serializer, authid, authrole)
 
@@ -69,7 +69,7 @@ func ConnectAnonymous(url string, realm string, serializer serialize.Serializati
 }
 
 func ConnectTicket(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	ticket string) *client.Client {
+	ticket string) (*client.Client, error) {
 
 	cfg := getTicketAuthConfig(realm, serializer, authid, authrole, ticket)
 
@@ -77,7 +77,7 @@ func ConnectTicket(url string, realm string, serializer serialize.Serialization,
 }
 
 func ConnectCRA(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	secret string) *client.Client {
+	secret string) (*client.Client, error) {
 
 	cfg := getCRAAuthConfig(realm, serializer, authid, authrole, secret)
 
@@ -85,30 +85,33 @@ func ConnectCRA(url string, realm string, serializer serialize.Serialization, au
 }
 
 func ConnectCryptoSign(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	privateKey string) *client.Client {
+	privateKey string) (*client.Client, error) {
 
 	cfg := getCryptosignAuthConfig(realm, serializer, authid, authrole, privateKey)
 
 	return connect(url, cfg)
 }
 
-func Subscribe(session *client.Client, topic string, subscribeOptions map[string]string, printDetails bool) {
-	// Define function to handle events received.
-	eventHandler := func(event *wamp.Event) {
-		if printDetails {
-			argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
-		} else {
-			argsKWArgs(event.Arguments, event.ArgumentsKw, nil)
-		}
+func actualSubscribe(session *client.Client, topic string, subscribeOptions wamp.Dict,
+	evenHandler func(event *wamp.Event)) error {
+
+	if err := session.Subscribe(topic, evenHandler, subscribeOptions); err != nil {
+		return err
 	}
 
+	logger.Printf("Subscribed to topic '%s'\n", topic)
+	return nil
+}
+
+func Subscribe(session *client.Client, topic string, subscribeOptions map[string]string,
+	printDetails bool) error {
+
 	// Subscribe to topic.
-	err := session.Subscribe(topic, eventHandler, dictToWampDict(subscribeOptions))
-	if err != nil {
-		logger.Fatal("subscribe error:", err)
-	} else {
-		logger.Printf("Subscribed to topic '%s'\n", topic)
+	if err := actualSubscribe(session, topic, dictToWampDict(subscribeOptions),
+		subscribeEventHandler(printDetails)); err != nil {
+		return err
 	}
+
 	// Wait for CTRL-c or client close while handling events.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt)
@@ -116,17 +119,18 @@ func Subscribe(session *client.Client, topic string, subscribeOptions map[string
 	case <-sigChan:
 	case <-session.Done():
 		logger.Print("Router gone, exiting")
-		return // router gone, just exit
+		return nil // router gone, just exit
 	}
 
 	// Unsubscribe from topic.
-	if err = session.Unsubscribe(topic); err != nil {
-		logger.Println("Failed to unsubscribe:", err)
+	if err := session.Unsubscribe(topic); err != nil {
+		return err
 	}
+	return nil
 }
 
-func actualPublish(session *client.Client, topic string, args []string, kwargs map[string]string, logPublishTime bool,
-	delayPublish int, group *sync.WaitGroup, publishOptions map[string]string) {
+func actualPublish(session *client.Client, topic string, args wamp.List, kwargs wamp.Dict, logPublishTime bool,
+	delayPublish int, group *sync.WaitGroup, publishOptions wamp.Dict) error {
 	if group != nil {
 		defer group.Done()
 	}
@@ -140,21 +144,20 @@ func actualPublish(session *client.Client, topic string, args []string, kwargs m
 	}
 
 	// Publish to topic.
-	err := session.Publish(topic, dictToWampDict(publishOptions), listToWampList(args), dictToWampDict(kwargs))
-	if err != nil {
-		logger.Fatal("Publish error:", err)
-	} else {
-		logger.Printf("Published to topic '%s'\n", topic)
+	if err := session.Publish(topic, publishOptions, args, kwargs); err != nil {
+		return err
 	}
+	logger.Printf("Published to topic '%s'\n", topic)
 
 	if logPublishTime {
 		endTime := time.Now().UnixMilli()
 		logger.Printf("call took %dms\n", endTime-startTime)
 	}
+	return nil
 }
 
 func Publish(session *client.Client, topic string, args []string, kwargs map[string]string, publishOptions map[string]string,
-	logPublishTime bool, repeatPublish int, delayPublish int, concurrency int) {
+	logPublishTime bool, repeatPublish int, delayPublish int, concurrency int) error {
 
 	var startTime int64
 	if logPublishTime {
@@ -162,22 +165,34 @@ func Publish(session *client.Client, topic string, args []string, kwargs map[str
 	}
 
 	if concurrency > 1 {
+
 		concurrentGoroutines := make(chan struct{}, concurrency)
 		var wg sync.WaitGroup
+		resC := make(chan error, repeatPublish)
 
+		var err error
 		for i := 0; i < repeatPublish; i++ {
 			wg.Add(1)
 			concurrentGoroutines <- struct{}{}
 			go func() {
-				actualPublish(session, topic, args, kwargs, logPublishTime, delayPublish, &wg, publishOptions)
+				err = actualPublish(session, topic, listToWampList(args), dictToWampDict(kwargs),
+					logPublishTime, delayPublish, &wg, dictToWampDict(publishOptions))
 				<-concurrentGoroutines
+				resC <- err
 			}()
 		}
 
 		wg.Wait()
+		err = getErrorFromErrorChannel(resC)
+		if err != nil {
+			return err
+		}
 	} else {
 		for i := 0; i < repeatPublish; i++ {
-			actualPublish(session, topic, args, kwargs, logPublishTime, delayPublish, nil, publishOptions)
+			if err := actualPublish(session, topic, listToWampList(args), dictToWampDict(kwargs),
+				logPublishTime, delayPublish, nil, dictToWampDict(publishOptions)); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -185,51 +200,34 @@ func Publish(session *client.Client, topic string, args []string, kwargs map[str
 		endTime := time.Now().UnixMilli()
 		logger.Printf("%d calls took %dms\n", repeatPublish, endTime-startTime)
 	}
+	return nil
 }
 
-func Register(session *client.Client, procedure string, command string, delay int, invokeCount int, registerOptions map[string]string) {
+func actualRegister(session *client.Client, procedure string, invocationHandler client.InvocationHandler,
+	options wamp.Dict) error {
+	if err := session.Register(procedure, invocationHandler, options); err != nil {
+		return err
+	}
+	logger.Printf("Registered procedure '%s'\n", procedure)
+	return nil
+}
+
+func Register(session *client.Client, procedure string, command string, delay int, invokeCount int,
+	registerOptions map[string]string) error {
 
 	// If the user has called with --invoke-count
 	hasMaxInvokeCount := invokeCount > 0
-
-	eventHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
-
-		argsKWArgs(inv.Arguments, inv.ArgumentsKw, nil)
-
-		result := ""
-
-		if command != "" {
-			err, out, _ := shellOut(command)
-			if err != nil {
-				logger.Println("error: ", err)
-			}
-			result = out
-		}
-
-		if hasMaxInvokeCount {
-			invokeCount--
-			if invokeCount == 0 {
-				session.Unregister(procedure)
-				time.AfterFunc(1*time.Second, func() {
-					logger.Println("session closing")
-					session.Close()
-				})
-			}
-		}
-
-		return client.InvokeResult{Args: wamp.List{result}}
-
-	}
 
 	if delay > 0 {
 		logger.Printf("procedure will be registered after %d milliseconds.\n", delay)
 		time.Sleep(time.Duration(delay) * time.Millisecond)
 	}
 
-	if err := session.Register(procedure, eventHandler, dictToWampDict(registerOptions)); err != nil {
-		logger.Fatal("Failed to register procedure:", err)
-	} else {
-		logger.Printf("Registered procedure '%s'\n", procedure)
+	invocationHandler := registerInvocationHandler(session, procedure, command, invokeCount, hasMaxInvokeCount)
+
+	if err := actualRegister(session, procedure, invocationHandler,
+		dictToWampDict(registerOptions)); err != nil {
+		return err
 	}
 
 	// Wait for CTRL-c or client close while handling remote procedure calls.
@@ -239,19 +237,18 @@ func Register(session *client.Client, procedure string, command string, delay in
 	case <-sigChan:
 	case <-session.Done():
 		logger.Print("Router gone, exiting")
-		return // router gone, just exit
+		return nil // router gone, just exit
 	}
 
 	if err := session.Unregister(procedure); err != nil {
-		logger.Println("Failed to unregister procedure:", err)
+		return err
 	}
 
-	logger.Println("Registered procedure with router")
-
+	return nil
 }
 
-func actuallyCall(session *client.Client, procedure string, args []string, kwargs map[string]string, logCallTime bool,
-	delayCall int, group *sync.WaitGroup, callOptions map[string]string) {
+func actuallyCall(session *client.Client, procedure string, args wamp.List, kwargs wamp.Dict,
+	logCallTime bool, delayCall int, group *sync.WaitGroup, callOptions wamp.Dict) (*wamp.Result, error) {
 
 	if group != nil {
 		defer group.Done()
@@ -266,22 +263,21 @@ func actuallyCall(session *client.Client, procedure string, args []string, kwarg
 		startTime = time.Now().UnixMilli()
 	}
 
-	options := dictToWampDict(callOptions)
 	var result *wamp.Result
 	var err error
-	if options["receive_progress"] != nil && options["receive_progress"] == true {
-		result, err = session.Call(context.Background(), procedure, options, listToWampList(args), dictToWampDict(kwargs), func(progress *wamp.Result) {
+	if callOptions["receive_progress"] != nil && callOptions["receive_progress"] == true {
+		result, err = session.Call(context.Background(), procedure, callOptions, args, kwargs, func(progress *wamp.Result) {
 			progressArgsKWArgs(progress.Arguments, progress.ArgumentsKw)
 		})
 	} else {
-		result, err = session.Call(context.Background(), procedure, options, listToWampList(args), dictToWampDict(kwargs), nil)
+		result, err = session.Call(context.Background(), procedure, callOptions, args, kwargs, nil)
 	}
 	if err != nil {
-		logger.Fatal(err)
+		return nil, err
 	} else if result != nil && len(result.Arguments) > 0 {
 		jsonString, err := json.MarshalIndent(result.Arguments[0], "", "    ")
 		if err != nil {
-			logger.Fatal(err)
+			return nil, err
 		}
 		fmt.Println(string(jsonString))
 	}
@@ -290,10 +286,11 @@ func actuallyCall(session *client.Client, procedure string, args []string, kwarg
 		endTime := time.Now().UnixMilli()
 		logger.Printf("call took %dms\n", endTime-startTime)
 	}
+	return result, nil
 }
 
 func Call(session *client.Client, procedure string, args []string, kwargs map[string]string,
-	logCallTime bool, repeatCount int, delayCall int, concurrency int, callOptions map[string]string) {
+	logCallTime bool, repeatCount int, delayCall int, concurrency int, callOptions map[string]string) error {
 
 	var startTime int64
 	if logCallTime {
@@ -303,20 +300,31 @@ func Call(session *client.Client, procedure string, args []string, kwargs map[st
 	if concurrency > 1 {
 		concurrentGoroutines := make(chan struct{}, concurrency)
 		var wg sync.WaitGroup
+		resC := make(chan error, repeatCount)
 
+		var err error
 		for i := 0; i < repeatCount; i++ {
 			wg.Add(1)
 			concurrentGoroutines <- struct{}{}
 			go func() {
-				actuallyCall(session, procedure, args, kwargs, logCallTime, delayCall, &wg, callOptions)
+				_, err = actuallyCall(session, procedure, listToWampList(args), dictToWampDict(kwargs),
+					logCallTime, delayCall, &wg, dictToWampDict(callOptions))
 				<-concurrentGoroutines
+				resC <- err
 			}()
 		}
 
 		wg.Wait()
+		err = getErrorFromErrorChannel(resC)
+		if err != nil {
+			return err
+		}
 	} else {
 		for i := 0; i < repeatCount; i++ {
-			actuallyCall(session, procedure, args, kwargs, logCallTime, delayCall, nil, callOptions)
+			if _, err := actuallyCall(session, procedure, listToWampList(args), dictToWampDict(kwargs), logCallTime, delayCall,
+				nil, dictToWampDict(callOptions)); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -324,4 +332,6 @@ func Call(session *client.Client, procedure string, args []string, kwargs map[st
 		endTime := time.Now().UnixMilli()
 		logger.Printf("%d calls took %dms\n", repeatCount, endTime-startTime)
 	}
+
+	return nil
 }

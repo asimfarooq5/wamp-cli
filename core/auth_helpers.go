@@ -28,6 +28,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+
 	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/gammazero/nexus/v3/wamp/crsign"
 	"golang.org/x/crypto/ed25519"

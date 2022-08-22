@@ -25,10 +25,11 @@
 package core
 
 import (
+	"testing"
+
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/transport/serialize"
 	"github.com/gammazero/nexus/v3/wamp"
-	"testing"
 )
 
 var (
@@ -57,7 +58,7 @@ func checkBaseConfig(cfg client.Config, t *testing.T) {
 	}
 }
 
-func TestConnectAnonymous(t *testing.T) {
+func TestAnonymousConfig(t *testing.T) {
 	cfg := getAnonymousAuthConfig(realm, serializer, authId, authRole)
 
 	checkBaseConfig(cfg, t)
@@ -67,7 +68,7 @@ func TestConnectAnonymous(t *testing.T) {
 	}
 }
 
-func TestConnectTicket(t *testing.T) {
+func TestTicketConfig(t *testing.T) {
 	cfg := getTicketAuthConfig(realm, serializer, authId, authRole, secret)
 
 	checkBaseConfig(cfg, t)
@@ -78,7 +79,7 @@ func TestConnectTicket(t *testing.T) {
 	}
 }
 
-func TestConnectCRA(t *testing.T) {
+func TestCRAConfig(t *testing.T) {
 	cfg := getCRAAuthConfig(realm, serializer, authId, authRole, secret)
 
 	checkBaseConfig(cfg, t)
@@ -89,7 +90,7 @@ func TestConnectCRA(t *testing.T) {
 	}
 }
 
-func TestConnectCryptoSign(t *testing.T) {
+func TestCryptoSignConfig(t *testing.T) {
 	cfg := getCryptosignAuthConfig(realm, serializer, authId, authRole, privateKeyHex)
 
 	checkBaseConfig(cfg, t)
