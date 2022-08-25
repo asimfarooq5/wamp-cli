@@ -58,7 +58,9 @@ func TestUrlSanitization(t *testing.T) {
 }
 
 func TestListToWampList(t *testing.T) {
-	inputList := []string{"string", "1", "1.1", "true"}
+	inputList := []string{"string", "1", "1.1", "true", "[\"group_1\",\"group_2\", 1, true]",
+		"{\"firstKey\":\"value\", \"secondKey\":2}",
+		"[{\"firstKey\":\"value\", \"secondKey\":2}, {\"firstKey\":\"value\", \"secondKey\":2}]"}
 	wampList := listToWampList(inputList)
 
 	if len(wampList) != len(inputList) {
@@ -75,5 +77,51 @@ func TestListToWampList(t *testing.T) {
 
 	if _, canConvert := wampList[3].(bool); canConvert == false {
 		t.Error("error in list conversion")
+	}
+
+	if _, canConvert := wampList[4].([]interface{}); canConvert == false {
+		t.Error("error in list conversion")
+	}
+
+	if _, canConvert := wampList[5].(map[string]interface{}); canConvert == false {
+		t.Error("error in list conversion")
+	}
+
+	if _, canConvert := wampList[6].([]map[string]interface{}); canConvert == false {
+		t.Error("error in list conversion")
+	}
+}
+
+func TestDictToWampDict(t *testing.T) {
+	inputDict := map[string]string{"string": "string", "int": "1", "float": "1.1", "bool": "true",
+		"list": "[\"group_1\",\"group_2\", 1, true]", "json": "{\"firstKey\":\"value\", \"secondKey\":2}",
+		"jsonList": "[{\"firstKey\":\"value\", \"secondKey\":2}, {\"firstKey\":\"value\", \"secondKey\":2}]"}
+	wampDict := dictToWampDict(inputDict)
+	if len(inputDict) != len(wampDict) {
+		t.Error("error in map conversion")
+	}
+
+	if _, canConvert := wampDict["int"].(int); canConvert == false {
+		t.Error("error in map conversion")
+	}
+
+	if _, canConvert := wampDict["float"].(float64); canConvert == false {
+		t.Error("error in map conversion")
+	}
+
+	if _, canConvert := wampDict["bool"].(bool); canConvert == false {
+		t.Error("error in map conversion")
+	}
+
+	if _, canConvert := wampDict["list"].([]interface{}); canConvert == false {
+		t.Error("error in map conversion")
+	}
+
+	if _, canConvert := wampDict["json"].(map[string]interface{}); canConvert == false {
+		t.Error("error in map conversion")
+	}
+
+	if _, canConvert := wampDict["jsonList"].([]map[string]interface{}); canConvert == false {
+		t.Error("error in dict conversion")
 	}
 }

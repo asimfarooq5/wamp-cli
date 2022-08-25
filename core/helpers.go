@@ -51,6 +51,7 @@ func listToWampList(args []string) wamp.List {
 
 		var mapJson map[string]interface{}
 		var mapList []map[string]interface{}
+		var simpleList []interface{}
 
 		if number, errNumber := strconv.Atoi(value); errNumber == nil {
 			arguments = append(arguments, number)
@@ -60,8 +61,10 @@ func listToWampList(args []string) wamp.List {
 			arguments = append(arguments, boolean)
 		} else if errJson := json.Unmarshal([]byte(value), &mapJson); errJson == nil {
 			arguments = append(arguments, mapJson)
-		} else if errList := json.Unmarshal([]byte(value), &mapList); errList == nil {
+		} else if errMapList := json.Unmarshal([]byte(value), &mapList); errMapList == nil {
 			arguments = append(arguments, mapList)
+		} else if errList := json.Unmarshal([]byte(value), &simpleList); errList == nil {
+			arguments = append(arguments, simpleList)
 		} else {
 			arguments = append(arguments, value)
 		}
@@ -77,6 +80,7 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 
 		var mapJson map[string]interface{}
 		var mapList []map[string]interface{}
+		var simpleList []interface{}
 
 		if number, errNumber := strconv.Atoi(value); errNumber == nil {
 			keywordArguments[key] = number
@@ -86,8 +90,10 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 			keywordArguments[key] = boolean
 		} else if errJson := json.Unmarshal([]byte(value), &mapJson); errJson == nil {
 			keywordArguments[key] = mapJson
-		} else if errList := json.Unmarshal([]byte(value), &mapList); errList == nil {
+		} else if errMapList := json.Unmarshal([]byte(value), &mapList); errMapList == nil {
 			keywordArguments[key] = mapList
+		} else if errList := json.Unmarshal([]byte(value), &simpleList); errList == nil {
+			keywordArguments[key] = simpleList
 		} else {
 			keywordArguments[key] = value
 		}
