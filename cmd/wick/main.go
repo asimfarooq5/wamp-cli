@@ -25,9 +25,15 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"io/ioutil"
 	"time"
 
 	"github.com/gammazero/nexus/v3/client"
+	"github.com/gammazero/nexus/v3/transport/serialize"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
@@ -88,9 +94,68 @@ var (
 	callOptions     = call.Flag("option", "Procedure call option. (May be provided multiple times)").Short('o').StringMap()
 	concurrentCalls = call.Flag("concurrency", "Make concurrent calls without waiting for the result for each to return. "+
 		"Only effective when called with --repeat.").Default("1").Int()
+
+	keyGen     = kingpin.Command("keygen", "Generate ed25519 keypair.").Hidden()
+	saveToFile = keyGen.Flag("output-file", "Write keys to file.").Short('o').Hidden().Bool()
 )
 
 const versionString = "0.5.0"
+
+func connect(serializerToUse serialize.Serialization) (*client.Client, error) {
+	var session *client.Client
+	var err error
+	var startTime int64
+
+	if *logCallTime {
+		startTime = time.Now().UnixMilli()
+	}
+	switch *authMethod {
+	case "anonymous":
+		if *privateKey != "" {
+			return nil, fmt.Errorf("private key not needed for anonymous auth")
+		}
+		if *ticket != "" {
+			return nil, fmt.Errorf("ticket not needed for anonymous auth")
+		}
+		if *secret != "" {
+			return nil, fmt.Errorf("secret not needed for anonymous auth")
+		}
+		session, err = core.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole)
+		if err != nil {
+			return nil, err
+		}
+	case "ticket":
+		if *ticket == "" {
+			return nil, fmt.Errorf("must provide ticket when authMethod is ticket")
+		}
+		session, err = core.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket)
+		if err != nil {
+			return nil, err
+		}
+	case "wampcra":
+		if *secret == "" {
+			return nil, fmt.Errorf("must provide secret when authMethod is wampcra")
+		}
+		session, err = core.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret)
+		if err != nil {
+			return nil, err
+		}
+	case "cryptosign":
+		if *privateKey == "" {
+			return nil, fmt.Errorf("must provide private key when authMethod is cryptosign")
+		}
+		session, err = core.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if *logCallTime {
+		endTime := time.Now().UnixMilli()
+		log.Printf("session joined in %dms\n", endTime-startTime)
+	}
+	return session, err
+}
 
 func main() {
 	kingpin.Version(versionString).VersionFlag.Short('v')
@@ -115,89 +180,74 @@ func main() {
 		*authMethod = selectAuthMethod(*privateKey, *ticket, *secret)
 	}
 
-	var session *client.Client
-	var err error
-	var startTime int64
-
-	if *logCallTime {
-		startTime = time.Now().UnixMilli()
-	}
-	switch *authMethod {
-	case "anonymous":
-		if *privateKey != "" {
-			log.Fatal("Private key not needed for anonymous auth")
-		}
-		if *ticket != "" {
-			log.Fatal("ticket not needed for anonymous auth")
-		}
-		if *secret != "" {
-			log.Fatal("secret not needed for anonymous auth")
-		}
-		session, err = core.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole)
-		if err != nil {
-			log.Fatal(err)
-		}
-	case "ticket":
-		if *ticket == "" {
-			log.Fatal("Must provide ticket when authMethod is ticket")
-		}
-		session, err = core.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket)
-		if err != nil {
-			log.Fatal(err)
-		}
-	case "wampcra":
-		if *secret == "" {
-			log.Fatal("Must provide secret when authMethod is wampcra")
-		}
-		session, err = core.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret)
-		if err != nil {
-			log.Fatal(err)
-		}
-	case "cryptosign":
-		if *privateKey == "" {
-			log.Fatal("Must provide private key when authMethod is cryptosign")
-		}
-		session, err = core.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if *logCallTime {
-		endTime := time.Now().UnixMilli()
-		log.Printf("session joined in %dms\n", endTime-startTime)
-	}
-
-	defer session.Close()
-
 	switch cmd {
 	case subscribe.FullCommand():
+		session, err := connect(serializerToUse)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer session.Close()
 		err = core.Subscribe(session, *subscribeTopic, *subscribeOptions, *subscribePrintDetails)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalln(err)
 		}
 	case publish.FullCommand():
+		session, err := connect(serializerToUse)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer session.Close()
 		if *repeatPublish < 1 {
-			log.Fatal("repeat count must be greater than zero")
+			log.Fatalln("repeat count must be greater than zero")
 		}
 		err = core.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs, *publishOptions, *logPublishTime,
 			*repeatPublish, *delayPublish, *concurrentPublish)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalln(err)
 		}
 	case register.FullCommand():
+		session, err := connect(serializerToUse)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer session.Close()
 		err = core.Register(session, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalln(err)
 		}
 	case call.FullCommand():
+		session, err := connect(serializerToUse)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer session.Close()
 		if *repeatCount < 1 {
-			log.Fatal("repeat count must be greater than zero")
+			log.Fatalln("repeat count must be greater than zero")
 		}
 		err = core.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall,
 			*concurrentCalls, *callOptions)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalln(err)
+		}
+	case keyGen.FullCommand():
+		pub, pri, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		publicString := hex.EncodeToString(pub)
+		privateString := hex.EncodeToString(pri)
+
+		if *saveToFile {
+			err = ioutil.WriteFile("key", []byte(privateString), 0600)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			err = ioutil.WriteFile("key.pub", []byte(publicString), 0644)
+			if err != nil {
+				log.Fatalln(err)
+			}
+		} else {
+			fmt.Printf("Public Key: %s\nPrivate Key: %s\n", publicString, privateString)
 		}
 	}
 }
