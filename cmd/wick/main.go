@@ -235,8 +235,7 @@ func main() {
 			log.Fatalln(err)
 		}
 		publicString := hex.EncodeToString(pub)
-		privateString := hex.EncodeToString(pri)
-
+		privateString := hex.EncodeToString(pri.Seed())
 		if *saveToFile {
 			err = ioutil.WriteFile("key", []byte(privateString), 0600)
 			if err != nil {
