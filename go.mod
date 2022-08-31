@@ -9,12 +9,17 @@ require (
 	gopkg.in/ini.v1 v1.66.6
 )
 
-require golang.org/x/sys v0.0.0-20220519141025-dcacdad47464 // indirect
+require (
+	github.com/gammazero/deque v0.2.0 // indirect
+	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/stretchr/testify v1.7.0 // indirect
+	github.com/ugorji/go/codec v1.1.13 // indirect
+	golang.org/x/sys v0.0.0-20220519141025-dcacdad47464 // indirect
+)
 
 require (
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/alecthomas/units v0.0.0-20210927113745-59d0afb8317a // indirect
-	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/gammazero/workerpool v1.1.3
 	github.com/sirupsen/logrus v1.8.1
-	github.com/ugorji/go/codec v1.1.13 // indirect
 )

@@ -28,8 +28,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/signal"
 	"sync"
 	"time"
 
@@ -92,40 +90,21 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 	return connect(url, cfg)
 }
 
-func actualSubscribe(session *client.Client, topic string, subscribeOptions wamp.Dict,
-	evenHandler func(event *wamp.Event)) error {
-
-	if err := session.Subscribe(topic, evenHandler, subscribeOptions); err != nil {
-		return err
-	}
-
-	logger.Printf("Subscribed to topic '%s'\n", topic)
-	return nil
-}
-
 func Subscribe(session *client.Client, topic string, subscribeOptions map[string]string,
 	printDetails bool) error {
+	eventHandler := func(event *wamp.Event) {
+		if printDetails {
+			argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
+		} else {
+			argsKWArgs(event.Arguments, event.ArgumentsKw, nil)
+		}
+	}
 
 	// Subscribe to topic.
-	if err := actualSubscribe(session, topic, dictToWampDict(subscribeOptions),
-		subscribeEventHandler(printDetails)); err != nil {
+	if err := session.Subscribe(topic, eventHandler, dictToWampDict(subscribeOptions)); err != nil {
 		return err
 	}
-
-	// Wait for CTRL-c or client close while handling events.
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
-	select {
-	case <-sigChan:
-	case <-session.Done():
-		logger.Print("Router gone, exiting")
-		return nil // router gone, just exit
-	}
-
-	// Unsubscribe from topic.
-	if err := session.Unsubscribe(topic); err != nil {
-		return err
-	}
+	logger.Printf("Subscribed to topic '%s'\n", topic)
 	return nil
 }
 
@@ -203,15 +182,6 @@ func Publish(session *client.Client, topic string, args []string, kwargs map[str
 	return nil
 }
 
-func actualRegister(session *client.Client, procedure string, invocationHandler client.InvocationHandler,
-	options wamp.Dict) error {
-	if err := session.Register(procedure, invocationHandler, options); err != nil {
-		return err
-	}
-	logger.Printf("Registered procedure '%s'\n", procedure)
-	return nil
-}
-
 func Register(session *client.Client, procedure string, command string, delay int, invokeCount int,
 	registerOptions map[string]string) error {
 
@@ -225,24 +195,11 @@ func Register(session *client.Client, procedure string, command string, delay in
 
 	invocationHandler := registerInvocationHandler(session, procedure, command, invokeCount, hasMaxInvokeCount)
 
-	if err := actualRegister(session, procedure, invocationHandler,
-		dictToWampDict(registerOptions)); err != nil {
+	//Register a procedure
+	if err := session.Register(procedure, invocationHandler, dictToWampDict(registerOptions)); err != nil {
 		return err
 	}
-
-	// Wait for CTRL-c or client close while handling remote procedure calls.
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
-	select {
-	case <-sigChan:
-	case <-session.Done():
-		logger.Print("Router gone, exiting")
-		return nil // router gone, just exit
-	}
-
-	if err := session.Unregister(procedure); err != nil {
-		return err
-	}
+	logger.Printf("Registered procedure '%s'\n", procedure)
 
 	return nil
 }

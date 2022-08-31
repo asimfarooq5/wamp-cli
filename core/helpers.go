@@ -101,17 +101,6 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 	return keywordArguments
 }
 
-func subscribeEventHandler(printDetails bool) func(event *wamp.Event) {
-	eventHandler := func(event *wamp.Event) {
-		if printDetails {
-			argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
-		} else {
-			argsKWArgs(event.Arguments, event.ArgumentsKw, nil)
-		}
-	}
-	return eventHandler
-}
-
 func registerInvocationHandler(session *client.Client, procedure string, command string,
 	invokeCount int, hasMaxInvokeCount bool) func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
 

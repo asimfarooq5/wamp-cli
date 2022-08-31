@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 
 	"github.com/gammazero/nexus/v3/transport/serialize"
 	log "github.com/sirupsen/logrus"
@@ -108,4 +109,18 @@ func readFromProfile() {
 	} else if *authMethod == "wampcra" {
 		*secret = section.Key("secret").String()
 	}
+}
+
+func getErrorFromErrorChannel(resC chan error) error {
+	close(resC)
+	var errs []string
+	for err := range resC {
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("- %v", err))
+		}
+	}
+	if len(errs) != 0 {
+		return fmt.Errorf("got errors:\n%v", strings.Join(errs, "\n"))
+	}
+	return nil
 }

@@ -30,10 +30,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"os"
+	"os/signal"
 	"time"
 
 	"github.com/gammazero/nexus/v3/client"
-	"github.com/gammazero/nexus/v3/transport/serialize"
+	"github.com/gammazero/workerpool"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 
@@ -94,6 +96,7 @@ var (
 	callOptions     = call.Flag("option", "Procedure call option. (May be provided multiple times)").Short('o').StringMap()
 	concurrentCalls = call.Flag("concurrency", "Make concurrent calls without waiting for the result for each to return. "+
 		"Only effective when called with --repeat.").Default("1").Int()
+	callSessionCount = call.Flag("parallel", "Start n wamp sessions").Default("1").Int()
 
 	keyGen     = kingpin.Command("keygen", "Generate ed25519 keypair.").Hidden()
 	saveToFile = keyGen.Flag("output-file", "Write keys to file.").Short('o').Hidden().Bool()
@@ -101,10 +104,11 @@ var (
 
 const versionString = "0.5.0"
 
-func connect(serializerToUse serialize.Serialization) (*client.Client, error) {
+func connect() (*client.Client, error) {
 	var session *client.Client
 	var err error
 	var startTime int64
+	serializerToUse := getSerializerByName(*serializer)
 
 	if *logCallTime {
 		startTime = time.Now().UnixMilli()
@@ -157,11 +161,28 @@ func connect(serializerToUse serialize.Serialization) (*client.Client, error) {
 	return session, err
 }
 
+func getSessions(sessionCount int, concurrency int) ([]*client.Client, error) {
+	var sessions []*client.Client
+	wp := workerpool.New(concurrency)
+	resC := make(chan error, sessionCount)
+	for i := 0; i < sessionCount; i++ {
+		wp.Submit(func() {
+			session, err := connect()
+			sessions = append(sessions, session)
+			resC <- err
+		})
+	}
+
+	wp.StopWait()
+	if err := getErrorFromErrorChannel(resC); err != nil {
+		return nil, err
+	}
+	return sessions, nil
+}
+
 func main() {
 	kingpin.Version(versionString).VersionFlag.Short('v')
 	cmd := kingpin.Parse()
-
-	serializerToUse := getSerializerByName(*serializer)
 
 	if *profile != "" {
 		readFromProfile()
@@ -182,53 +203,90 @@ func main() {
 
 	switch cmd {
 	case subscribe.FullCommand():
-		session, err := connect(serializerToUse)
+		session, err := connect()
 		if err != nil {
 			log.Fatalln(err)
 		}
 		defer session.Close()
-		err = core.Subscribe(session, *subscribeTopic, *subscribeOptions, *subscribePrintDetails)
-		if err != nil {
+		if err = core.Subscribe(session, *subscribeTopic, *subscribeOptions, *subscribePrintDetails); err != nil {
 			log.Fatalln(err)
 		}
+
+		// Wait for CTRL-c or client close while handling events.
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt)
+		select {
+		case <-sigChan:
+		case <-session.Done():
+			log.Print("Router gone, exiting")
+		}
+		// Unsubscribe from topic.
+		session.Unsubscribe(*subscribeTopic)
+
 	case publish.FullCommand():
-		session, err := connect(serializerToUse)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		defer session.Close()
 		if *repeatPublish < 1 {
 			log.Fatalln("repeat count must be greater than zero")
 		}
-		err = core.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs, *publishOptions, *logPublishTime,
-			*repeatPublish, *delayPublish, *concurrentPublish)
+		session, err := connect()
 		if err != nil {
+			log.Fatalln(err)
+		}
+		if err = core.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs, *publishOptions, *logPublishTime,
+			*repeatPublish, *delayPublish, *concurrentPublish); err != nil {
 			log.Fatalln(err)
 		}
 	case register.FullCommand():
-		session, err := connect(serializerToUse)
+		session, err := connect()
 		if err != nil {
 			log.Fatalln(err)
 		}
-		defer session.Close()
-		err = core.Register(session, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions)
-		if err != nil {
+		if err = core.Register(session, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions); err != nil {
 			log.Fatalln(err)
 		}
+
+		// Wait for CTRL-c or client close while handling events.
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt)
+		select {
+		case <-sigChan:
+		case <-session.Done():
+			log.Print("Router gone, exiting")
+		}
+		// Unregister procedure.
+		session.Unregister(*registerProcedure)
+
 	case call.FullCommand():
-		session, err := connect(serializerToUse)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		defer session.Close()
+		var startTime int64
 		if *repeatCount < 1 {
 			log.Fatalln("repeat count must be greater than zero")
 		}
-		err = core.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall,
-			*concurrentCalls, *callOptions)
+		if *logCallTime {
+			startTime = time.Now().UnixMilli()
+		}
+		sessions, err := getSessions(*callSessionCount, *concurrentCalls)
 		if err != nil {
 			log.Fatalln(err)
 		}
+		if *logCallTime {
+			endTime := time.Now().UnixMilli()
+			log.Printf("%v sessions joined in %dms\n", *callSessionCount, endTime-startTime)
+		}
+		defer func() {
+			for _, sess := range sessions {
+				sess.Close()
+			}
+		}()
+		wp := workerpool.New(*concurrentCalls)
+		for _, session := range sessions {
+			wp.Submit(func() {
+				if err = core.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall,
+					*concurrentCalls, *callOptions); err != nil {
+					log.Fatalln(err)
+				}
+			})
+		}
+		wp.StopWait()
+
 	case keyGen.FullCommand():
 		pub, pri, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
