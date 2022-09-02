@@ -78,6 +78,7 @@ var (
 	delayPublish       = publish.Flag("delay", "Provide the delay in milliseconds.").Default("0").Int()
 	concurrentPublish  = publish.Flag("concurrency", "Publish to the topic concurrently. "+
 		"Only effective when called with --repeat.").Default("1").Int()
+	publishSessionCount = publish.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
 
 	register          = kingpin.Command("register", "Register a procedure.")
 	registerProcedure = register.Arg("procedure", "Procedure name.").Required().String()
@@ -96,7 +97,7 @@ var (
 	callOptions     = call.Flag("option", "Procedure call option. (May be provided multiple times)").Short('o').StringMap()
 	concurrentCalls = call.Flag("concurrency", "Make concurrent calls without waiting for the result for each to return. "+
 		"Only effective when called with --repeat.").Default("1").Int()
-	callSessionCount = call.Flag("parallel", "Start n wamp sessions").Default("1").Int()
+	callSessionCount = call.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
 
 	keyGen     = kingpin.Command("keygen", "Generate ed25519 keypair.").Hidden()
 	saveToFile = keyGen.Flag("output-file", "Write keys to file.").Short('o').Hidden().Bool()
@@ -104,13 +105,13 @@ var (
 
 const versionString = "0.5.0"
 
-func connect() (*client.Client, error) {
+func connect(logTime bool) (*client.Client, error) {
 	var session *client.Client
 	var err error
 	var startTime int64
 	serializerToUse := getSerializerByName(*serializer)
 
-	if *logCallTime {
+	if logTime {
 		startTime = time.Now().UnixMilli()
 	}
 	switch *authMethod {
@@ -154,20 +155,20 @@ func connect() (*client.Client, error) {
 		}
 	}
 
-	if *logCallTime {
+	if logTime {
 		endTime := time.Now().UnixMilli()
 		log.Printf("session joined in %dms\n", endTime-startTime)
 	}
 	return session, err
 }
 
-func getSessions(sessionCount int, concurrency int) ([]*client.Client, error) {
+func getSessions(sessionCount int, concurrency int, logTime bool) ([]*client.Client, error) {
 	var sessions []*client.Client
 	wp := workerpool.New(concurrency)
 	resC := make(chan error, sessionCount)
 	for i := 0; i < sessionCount; i++ {
 		wp.Submit(func() {
-			session, err := connect()
+			session, err := connect(logTime)
 			sessions = append(sessions, session)
 			resC <- err
 		})
@@ -203,7 +204,7 @@ func main() {
 
 	switch cmd {
 	case subscribe.FullCommand():
-		session, err := connect()
+		session, err := connect(false)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -224,19 +225,39 @@ func main() {
 		session.Unsubscribe(*subscribeTopic)
 
 	case publish.FullCommand():
+		var startTime int64
 		if *repeatPublish < 1 {
 			log.Fatalln("repeat count must be greater than zero")
 		}
-		session, err := connect()
+		if *logPublishTime {
+			startTime = time.Now().UnixMilli()
+		}
+		sessions, err := getSessions(*publishSessionCount, *concurrentPublish, *logPublishTime)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		if err = core.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs, *publishOptions, *logPublishTime,
-			*repeatPublish, *delayPublish, *concurrentPublish); err != nil {
-			log.Fatalln(err)
+		if *logPublishTime {
+			endTime := time.Now().UnixMilli()
+			log.Printf("%v sessions joined in %dms\n", *publishSessionCount, endTime-startTime)
 		}
+		defer func() {
+			for _, sess := range sessions {
+				sess.Close()
+			}
+		}()
+		wp := workerpool.New(*concurrentPublish)
+		for _, session := range sessions {
+			wp.Submit(func() {
+				if err = core.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs, *publishOptions, *logPublishTime,
+					*repeatPublish, *delayPublish, *concurrentPublish); err != nil {
+					log.Fatalln(err)
+				}
+			})
+		}
+		wp.StopWait()
+
 	case register.FullCommand():
-		session, err := connect()
+		session, err := connect(false)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -263,7 +284,7 @@ func main() {
 		if *logCallTime {
 			startTime = time.Now().UnixMilli()
 		}
-		sessions, err := getSessions(*callSessionCount, *concurrentCalls)
+		sessions, err := getSessions(*callSessionCount, *concurrentCalls, *logCallTime)
 		if err != nil {
 			log.Fatalln(err)
 		}
