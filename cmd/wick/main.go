@@ -67,11 +67,13 @@ var (
 	joinSessionCount = join.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
 	concurrentJoin   = join.Flag("concurrency", "Start wamp session concurrently").Default("1").Int()
 	logJoinTime      = join.Flag("time", "Log session join time").Bool()
+	keepaliveJoin    = join.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
 
 	subscribe             = kingpin.Command("subscribe", "Subscribe a topic.")
 	subscribeTopic        = subscribe.Arg("topic", "Topic to subscribe.").Required().String()
 	subscribeOptions      = subscribe.Flag("option", "Subscribe option. (May be provided multiple times)").Short('o').StringMap()
 	subscribePrintDetails = subscribe.Flag("details", "Print event details.").Bool()
+	keepaliveSubscribe    = subscribe.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
 
 	publish            = kingpin.Command("publish", "Publish to a topic.")
 	publishTopic       = publish.Arg("topic", "Topic to publish.").Required().String()
@@ -84,6 +86,7 @@ var (
 	concurrentPublish  = publish.Flag("concurrency", "Publish to the topic concurrently. "+
 		"Only effective when called with --repeat.").Default("1").Int()
 	publishSessionCount = publish.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
+	keepalivePublish    = publish.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
 
 	register          = kingpin.Command("register", "Register a procedure.")
 	registerProcedure = register.Arg("procedure", "Procedure name.").Required().String()
@@ -91,6 +94,7 @@ var (
 	delay             = register.Flag("delay", "Register procedure after delay.(in milliseconds)").Int()
 	invokeCount       = register.Flag("invoke-count", "Leave session after it's called requested times.").Int()
 	registerOptions   = register.Flag("option", "Procedure registration option. (May be provided multiple times)").Short('o').StringMap()
+	keepaliveRegister = register.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
 
 	call            = kingpin.Command("call", "Call a procedure.")
 	callProcedure   = call.Arg("procedure", "Procedure to call.").Required().String()
@@ -103,6 +107,7 @@ var (
 	concurrentCalls = call.Flag("concurrency", "Make concurrent calls without waiting for the result for each to return. "+
 		"Only effective when called with --repeat.").Default("1").Int()
 	callSessionCount = call.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
+	keepaliveCall    = call.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
 
 	keyGen     = kingpin.Command("keygen", "Generate ed25519 keypair.").Hidden()
 	saveToFile = keyGen.Flag("output-file", "Write keys to file.").Short('o').Hidden().Bool()
@@ -110,7 +115,7 @@ var (
 
 const versionString = "0.5.0"
 
-func connect(logTime bool) (*client.Client, error) {
+func connect(logTime bool, keepalive int) (*client.Client, error) {
 	var session *client.Client
 	var err error
 	var startTime int64
@@ -130,7 +135,7 @@ func connect(logTime bool) (*client.Client, error) {
 		if *secret != "" {
 			return nil, fmt.Errorf("secret not needed for anonymous auth")
 		}
-		session, err = core.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole)
+		session, err = core.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole, keepalive)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +143,7 @@ func connect(logTime bool) (*client.Client, error) {
 		if *ticket == "" {
 			return nil, fmt.Errorf("must provide ticket when authMethod is ticket")
 		}
-		session, err = core.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket)
+		session, err = core.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket, keepalive)
 		if err != nil {
 			return nil, err
 		}
@@ -146,7 +151,7 @@ func connect(logTime bool) (*client.Client, error) {
 		if *secret == "" {
 			return nil, fmt.Errorf("must provide secret when authMethod is wampcra")
 		}
-		session, err = core.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret)
+		session, err = core.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret, keepalive)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +159,7 @@ func connect(logTime bool) (*client.Client, error) {
 		if *privateKey == "" {
 			return nil, fmt.Errorf("must provide private key when authMethod is cryptosign")
 		}
-		session, err = core.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey)
+		session, err = core.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey, keepalive)
 		if err != nil {
 			return nil, err
 		}
@@ -167,13 +172,13 @@ func connect(logTime bool) (*client.Client, error) {
 	return session, err
 }
 
-func getSessions(sessionCount int, concurrency int, logTime bool) ([]*client.Client, error) {
+func getSessions(sessionCount int, concurrency int, logTime bool, keepalive int) ([]*client.Client, error) {
 	var sessions []*client.Client
 	wp := workerpool.New(concurrency)
 	resC := make(chan error, sessionCount)
 	for i := 0; i < sessionCount; i++ {
 		wp.Submit(func() {
-			session, err := connect(logTime)
+			session, err := connect(logTime, keepalive)
 			sessions = append(sessions, session)
 			resC <- err
 		})
@@ -216,7 +221,7 @@ func main() {
 		if *logJoinTime {
 			startTime = time.Now().UnixMilli()
 		}
-		sessions, err := getSessions(*joinSessionCount, *concurrentJoin, *logJoinTime)
+		sessions, err := getSessions(*joinSessionCount, *concurrentJoin, *logJoinTime, *keepaliveJoin)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -242,7 +247,7 @@ func main() {
 		}
 
 	case subscribe.FullCommand():
-		session, err := connect(false)
+		session, err := connect(false, *keepaliveSubscribe)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -270,7 +275,7 @@ func main() {
 		if *logPublishTime {
 			startTime = time.Now().UnixMilli()
 		}
-		sessions, err := getSessions(*publishSessionCount, *concurrentPublish, *logPublishTime)
+		sessions, err := getSessions(*publishSessionCount, *concurrentPublish, *logPublishTime, *keepalivePublish)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -295,7 +300,7 @@ func main() {
 		wp.StopWait()
 
 	case register.FullCommand():
-		session, err := connect(false)
+		session, err := connect(false, *keepaliveRegister)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -322,7 +327,7 @@ func main() {
 		if *logCallTime {
 			startTime = time.Now().UnixMilli()
 		}
-		sessions, err := getSessions(*callSessionCount, *concurrentCalls, *logCallTime)
+		sessions, err := getSessions(*callSessionCount, *concurrentCalls, *logCallTime, *keepaliveCall)
 		if err != nil {
 			log.Fatalln(err)
 		}

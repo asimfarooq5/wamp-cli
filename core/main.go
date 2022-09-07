@@ -59,33 +59,33 @@ func connect(url string, cfg client.Config) (*client.Client, error) {
 }
 
 func ConnectAnonymous(url string, realm string, serializer serialize.Serialization, authid string,
-	authrole string) (*client.Client, error) {
+	authrole string, keepaliveInterval int) (*client.Client, error) {
 
-	cfg := getAnonymousAuthConfig(realm, serializer, authid, authrole)
+	cfg := getAnonymousAuthConfig(realm, serializer, authid, authrole, keepaliveInterval)
 
 	return connect(url, cfg)
 }
 
 func ConnectTicket(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	ticket string) (*client.Client, error) {
+	ticket string, keepaliveInterval int) (*client.Client, error) {
 
-	cfg := getTicketAuthConfig(realm, serializer, authid, authrole, ticket)
+	cfg := getTicketAuthConfig(realm, serializer, authid, authrole, ticket, keepaliveInterval)
 
 	return connect(url, cfg)
 }
 
 func ConnectCRA(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	secret string) (*client.Client, error) {
+	secret string, keepaliveInterval int) (*client.Client, error) {
 
-	cfg := getCRAAuthConfig(realm, serializer, authid, authrole, secret)
+	cfg := getCRAAuthConfig(realm, serializer, authid, authrole, secret, keepaliveInterval)
 
 	return connect(url, cfg)
 }
 
 func ConnectCryptoSign(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	privateKey string) (*client.Client, error) {
+	privateKey string, keepaliveInterval int) (*client.Client, error) {
 
-	cfg := getCryptosignAuthConfig(realm, serializer, authid, authrole, privateKey)
+	cfg := getCryptosignAuthConfig(realm, serializer, authid, authrole, privateKey, keepaliveInterval)
 
 	return connect(url, cfg)
 }

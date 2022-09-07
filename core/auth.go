@@ -26,14 +26,16 @@ package core
 
 import (
 	"encoding/hex"
+	"time"
 
 	"github.com/gammazero/nexus/v3/client"
+	"github.com/gammazero/nexus/v3/transport"
 	"github.com/gammazero/nexus/v3/transport/serialize"
 	"github.com/gammazero/nexus/v3/wamp"
 )
 
 func getAnonymousAuthConfig(realm string, serializer serialize.Serialization, authid string,
-	authrole string) client.Config {
+	authrole string, keepAliveInterval int) client.Config {
 
 	hello := getBaseHello(authid, authrole)
 
@@ -42,13 +44,14 @@ func getAnonymousAuthConfig(realm string, serializer serialize.Serialization, au
 		Logger:        logger,
 		HelloDetails:  hello,
 		Serialization: serializer,
+		WsCfg:         transport.WebsocketConfig{KeepAlive: time.Duration(keepAliveInterval) * time.Second},
 	}
 
 	return cfg
 }
 
 func getTicketAuthConfig(realm string, serializer serialize.Serialization, authid string, authrole string,
-	ticket string) client.Config {
+	ticket string, keepAliveInterval int) client.Config {
 
 	hello := getBaseHello(authid, authrole)
 
@@ -62,13 +65,14 @@ func getTicketAuthConfig(realm string, serializer serialize.Serialization, authi
 			},
 		},
 		Serialization: serializer,
+		WsCfg:         transport.WebsocketConfig{KeepAlive: time.Duration(keepAliveInterval) * time.Second},
 	}
 
 	return cfg
 }
 
 func getCRAAuthConfig(realm string, serializer serialize.Serialization, authid string, authrole string,
-	secret string) client.Config {
+	secret string, keepAliveInterval int) client.Config {
 
 	hello := getBaseHello(authid, authrole)
 
@@ -80,13 +84,14 @@ func getCRAAuthConfig(realm string, serializer serialize.Serialization, authid s
 			"wampcra": handleCRAAuth(secret),
 		},
 		Serialization: serializer,
+		WsCfg:         transport.WebsocketConfig{KeepAlive: time.Duration(keepAliveInterval) * time.Second},
 	}
 
 	return cfg
 }
 
 func getCryptosignAuthConfig(realm string, serializer serialize.Serialization, authid string, authrole string,
-	privateKey string) client.Config {
+	privateKey string, keepAliveInterval int) client.Config {
 
 	hello := getBaseHello(authid, authrole)
 
@@ -102,6 +107,7 @@ func getCryptosignAuthConfig(realm string, serializer serialize.Serialization, a
 			"cryptosign": handleCryptosign(pvk),
 		},
 		Serialization: serializer,
+		WsCfg:         transport.WebsocketConfig{KeepAlive: time.Duration(keepAliveInterval) * time.Second},
 	}
 
 	return cfg

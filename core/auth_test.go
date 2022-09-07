@@ -33,11 +33,12 @@ import (
 )
 
 var (
-	realm      = "realm1"
-	serializer = serialize.JSON
-	authId     = "john"
-	authRole   = "test"
-	secret     = "williamsburg"
+	realm             = "realm1"
+	serializer        = serialize.JSON
+	authId            = "john"
+	authRole          = "test"
+	secret            = "williamsburg"
+	keepaliveInterval = 0
 )
 
 func checkBaseConfig(cfg client.Config, t *testing.T) {
@@ -59,7 +60,7 @@ func checkBaseConfig(cfg client.Config, t *testing.T) {
 }
 
 func TestAnonymousConfig(t *testing.T) {
-	cfg := getAnonymousAuthConfig(realm, serializer, authId, authRole)
+	cfg := getAnonymousAuthConfig(realm, serializer, authId, authRole, keepaliveInterval)
 
 	checkBaseConfig(cfg, t)
 
@@ -69,7 +70,7 @@ func TestAnonymousConfig(t *testing.T) {
 }
 
 func TestTicketConfig(t *testing.T) {
-	cfg := getTicketAuthConfig(realm, serializer, authId, authRole, secret)
+	cfg := getTicketAuthConfig(realm, serializer, authId, authRole, secret, keepaliveInterval)
 
 	checkBaseConfig(cfg, t)
 
@@ -80,7 +81,7 @@ func TestTicketConfig(t *testing.T) {
 }
 
 func TestCRAConfig(t *testing.T) {
-	cfg := getCRAAuthConfig(realm, serializer, authId, authRole, secret)
+	cfg := getCRAAuthConfig(realm, serializer, authId, authRole, secret, keepaliveInterval)
 
 	checkBaseConfig(cfg, t)
 
@@ -91,7 +92,7 @@ func TestCRAConfig(t *testing.T) {
 }
 
 func TestCryptoSignConfig(t *testing.T) {
-	cfg := getCryptosignAuthConfig(realm, serializer, authId, authRole, privateKeyHex)
+	cfg := getCryptosignAuthConfig(realm, serializer, authId, authRole, privateKeyHex, keepaliveInterval)
 
 	checkBaseConfig(cfg, t)
 
