@@ -73,6 +73,10 @@ var (
 	subscribeTopic        = subscribe.Arg("topic", "Topic to subscribe.").Required().String()
 	subscribeOptions      = subscribe.Flag("option", "Subscribe option. (May be provided multiple times)").Short('o').StringMap()
 	subscribePrintDetails = subscribe.Flag("details", "Print event details.").Bool()
+	logSubscribeTime      = subscribe.Flag("time", "Log time to join session and subscribe a topic.").Bool()
+	concurrentSubscribe   = subscribe.Flag("concurrency", "Subscribe to topic concurrently. "+
+		"Only effective when called with --parallel.").Default("1").Int()
+	subscribeSessionCount = subscribe.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
 	keepaliveSubscribe    = subscribe.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
 
 	publish            = kingpin.Command("publish", "Publish to a topic.")
@@ -88,13 +92,17 @@ var (
 	publishSessionCount = publish.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
 	keepalivePublish    = publish.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
 
-	register          = kingpin.Command("register", "Register a procedure.")
-	registerProcedure = register.Arg("procedure", "Procedure name.").Required().String()
-	onInvocationCmd   = register.Arg("command", "Shell command to run and return it's output.").String()
-	delay             = register.Flag("delay", "Register procedure after delay.(in milliseconds)").Int()
-	invokeCount       = register.Flag("invoke-count", "Leave session after it's called requested times.").Int()
-	registerOptions   = register.Flag("option", "Procedure registration option. (May be provided multiple times)").Short('o').StringMap()
-	keepaliveRegister = register.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
+	register           = kingpin.Command("register", "Register a procedure.")
+	registerProcedure  = register.Arg("procedure", "Procedure name.").Required().String()
+	onInvocationCmd    = register.Arg("command", "Shell command to run and return it's output.").String()
+	delay              = register.Flag("delay", "Register procedure after delay.(in milliseconds)").Int()
+	invokeCount        = register.Flag("invoke-count", "Leave session after it's called requested times.").Int()
+	registerOptions    = register.Flag("option", "Procedure registration option. (May be provided multiple times)").Short('o').StringMap()
+	logRegisterTime    = register.Flag("time", "Log time to join session and register procedure.").Bool()
+	concurrentRegister = register.Flag("concurrency", "Register procedure concurrently. "+
+		"Only effective when called with --parallel.").Default("1").Int()
+	registerSessionCount = register.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
+	keepaliveRegister    = register.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
 
 	call            = kingpin.Command("call", "Call a procedure.")
 	callProcedure   = call.Arg("procedure", "Procedure to call.").Required().String()
@@ -218,6 +226,7 @@ func main() {
 		if *joinSessionCount < 0 {
 			log.Fatalln("parallel must be greater than zero")
 		}
+
 		if *logJoinTime {
 			startTime = time.Now().UnixMilli()
 		}
@@ -229,11 +238,19 @@ func main() {
 			endTime := time.Now().UnixMilli()
 			log.Printf("%v sessions joined in %dms\n", *joinSessionCount, endTime-startTime)
 		}
+
 		defer func() {
+			wp := workerpool.New(len(sessions))
 			for _, sess := range sessions {
-				sess.Close()
+				s := sess
+				wp.Submit(func() {
+					// Close the connection to the router
+					s.Close()
+				})
 			}
+			wp.StopWait()
 		}()
+
 		// Wait for CTRL-c or client close while handling events.
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt)
@@ -247,31 +264,69 @@ func main() {
 		}
 
 	case subscribe.FullCommand():
-		session, err := connect(false, *keepaliveSubscribe)
+		var startTime int64
+		if *subscribeSessionCount < 0 {
+			log.Fatalln("parallel must be greater than zero")
+		}
+
+		if *logSubscribeTime {
+			startTime = time.Now().UnixMilli()
+		}
+		sessions, err := getSessions(*subscribeSessionCount, *concurrentSubscribe, *logSubscribeTime, *keepaliveSubscribe)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		defer session.Close()
-		if err = core.Subscribe(session, *subscribeTopic, *subscribeOptions, *subscribePrintDetails); err != nil {
-			log.Fatalln(err)
+		if *logSubscribeTime {
+			endTime := time.Now().UnixMilli()
+			log.Printf("%v sessions joined in %dms\n", *subscribeSessionCount, endTime-startTime)
 		}
+
+		defer func() {
+			wp := workerpool.New(len(sessions))
+			for _, sess := range sessions {
+				s := sess
+				wp.Submit(func() {
+					// Unsubscribe from topic.
+					s.Unsubscribe(*subscribeTopic)
+					// Close the connection to the router
+					s.Close()
+				})
+			}
+			wp.StopWait()
+		}()
+
+		wp := workerpool.New(*concurrentSubscribe)
+		for _, session := range sessions {
+			sess := session
+			wp.Submit(func() {
+				if err = core.Subscribe(sess, *subscribeTopic, *subscribeOptions, *subscribePrintDetails, *logSubscribeTime); err != nil {
+					log.Fatalln(err)
+				}
+			})
+		}
+		wp.StopWait()
 
 		// Wait for CTRL-c or client close while handling events.
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt)
-		select {
-		case <-sigChan:
-		case <-session.Done():
-			log.Print("Router gone, exiting")
+		for _, session := range sessions {
+			select {
+			case <-sigChan:
+				return
+			case <-session.Done():
+				log.Print("Router gone, exiting")
+			}
 		}
-		// Unsubscribe from topic.
-		session.Unsubscribe(*subscribeTopic)
 
 	case publish.FullCommand():
 		var startTime int64
 		if *repeatPublish < 1 {
 			log.Fatalln("repeat count must be greater than zero")
 		}
+		if *publishSessionCount < 0 {
+			log.Fatalln("parallel must be greater than zero")
+		}
+
 		if *logPublishTime {
 			startTime = time.Now().UnixMilli()
 		}
@@ -283,15 +338,24 @@ func main() {
 			endTime := time.Now().UnixMilli()
 			log.Printf("%v sessions joined in %dms\n", *publishSessionCount, endTime-startTime)
 		}
+
 		defer func() {
+			wp := workerpool.New(len(sessions))
 			for _, sess := range sessions {
-				sess.Close()
+				s := sess
+				wp.Submit(func() {
+					// Close the connection to the router
+					s.Close()
+				})
 			}
+			wp.StopWait()
 		}()
+
 		wp := workerpool.New(*concurrentPublish)
 		for _, session := range sessions {
+			sess := session
 			wp.Submit(func() {
-				if err = core.Publish(session, *publishTopic, *publishArgs, *publishKeywordArgs, *publishOptions, *logPublishTime,
+				if err = core.Publish(sess, *publishTopic, *publishArgs, *publishKeywordArgs, *publishOptions, *logPublishTime,
 					*repeatPublish, *delayPublish, *concurrentPublish); err != nil {
 					log.Fatalln(err)
 				}
@@ -300,30 +364,69 @@ func main() {
 		wp.StopWait()
 
 	case register.FullCommand():
-		session, err := connect(false, *keepaliveRegister)
+		var startTime int64
+		if *registerSessionCount < 0 {
+			log.Fatalln("parallel must be greater than zero")
+		}
+
+		if *logRegisterTime {
+			startTime = time.Now().UnixMilli()
+		}
+		sessions, err := getSessions(*registerSessionCount, *concurrentRegister, *logRegisterTime, *keepaliveRegister)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		if err = core.Register(session, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions); err != nil {
-			log.Fatalln(err)
+		if *logRegisterTime {
+			endTime := time.Now().UnixMilli()
+			log.Printf("%v sessions joined in %dms\n", *registerSessionCount, endTime-startTime)
 		}
+
+		defer func() {
+			wp := workerpool.New(len(sessions))
+			for _, sess := range sessions {
+				s := sess
+				wp.Submit(func() {
+					// Unregister procedure
+					s.Unregister(*registerProcedure)
+					// Close the connection to the router
+					s.Close()
+				})
+			}
+			wp.StopWait()
+		}()
+
+		wp := workerpool.New(*concurrentRegister)
+		for _, session := range sessions {
+			sess := session
+			wp.Submit(func() {
+				if err = core.Register(sess, *registerProcedure, *onInvocationCmd, *delay, *invokeCount, *registerOptions, *logRegisterTime); err != nil {
+					log.Fatalln(err)
+				}
+			})
+		}
+		wp.StopWait()
 
 		// Wait for CTRL-c or client close while handling events.
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt)
-		select {
-		case <-sigChan:
-		case <-session.Done():
-			log.Print("Router gone, exiting")
+		for _, session := range sessions {
+			select {
+			case <-sigChan:
+				return
+			case <-session.Done():
+				log.Print("Router gone, exiting")
+			}
 		}
-		// Unregister procedure.
-		session.Unregister(*registerProcedure)
 
 	case call.FullCommand():
 		var startTime int64
 		if *repeatCount < 1 {
 			log.Fatalln("repeat count must be greater than zero")
 		}
+		if *callSessionCount < 0 {
+			log.Fatalln("parallel must be greater than zero")
+		}
+
 		if *logCallTime {
 			startTime = time.Now().UnixMilli()
 		}
@@ -335,15 +438,24 @@ func main() {
 			endTime := time.Now().UnixMilli()
 			log.Printf("%v sessions joined in %dms\n", *callSessionCount, endTime-startTime)
 		}
+
 		defer func() {
+			wp := workerpool.New(len(sessions))
 			for _, sess := range sessions {
-				sess.Close()
+				s := sess
+				wp.Submit(func() {
+					// Close the connection to the router
+					s.Close()
+				})
 			}
+			wp.StopWait()
 		}()
+
 		wp := workerpool.New(*concurrentCalls)
 		for _, session := range sessions {
+			sess := session
 			wp.Submit(func() {
-				if err = core.Call(session, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall,
+				if err = core.Call(sess, *callProcedure, *callArgs, *callKeywordArgs, *logCallTime, *repeatCount, *delayCall,
 					*concurrentCalls, *callOptions); err != nil {
 					log.Fatalln(err)
 				}
