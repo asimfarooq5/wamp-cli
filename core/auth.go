@@ -32,6 +32,7 @@ import (
 	"github.com/gammazero/nexus/v3/transport"
 	"github.com/gammazero/nexus/v3/transport/serialize"
 	"github.com/gammazero/nexus/v3/wamp"
+	log "github.com/sirupsen/logrus"
 )
 
 func getAnonymousAuthConfig(realm string, serializer serialize.Serialization, authid string,
@@ -41,7 +42,7 @@ func getAnonymousAuthConfig(realm string, serializer serialize.Serialization, au
 
 	cfg := client.Config{
 		Realm:         realm,
-		Logger:        logger,
+		Logger:        log.New(),
 		HelloDetails:  hello,
 		Serialization: serializer,
 		WsCfg:         transport.WebsocketConfig{KeepAlive: time.Duration(keepAliveInterval) * time.Second},
@@ -57,7 +58,7 @@ func getTicketAuthConfig(realm string, serializer serialize.Serialization, authi
 
 	cfg := client.Config{
 		Realm:        realm,
-		Logger:       logger,
+		Logger:       log.New(),
 		HelloDetails: hello,
 		AuthHandlers: map[string]client.AuthFunc{
 			"ticket": func(c *wamp.Challenge) (string, wamp.Dict) {
@@ -78,7 +79,7 @@ func getCRAAuthConfig(realm string, serializer serialize.Serialization, authid s
 
 	cfg := client.Config{
 		Realm:        realm,
-		Logger:       logger,
+		Logger:       log.New(),
 		HelloDetails: hello,
 		AuthHandlers: map[string]client.AuthFunc{
 			"wampcra": handleCRAAuth(secret),
@@ -101,7 +102,7 @@ func getCryptosignAuthConfig(realm string, serializer serialize.Serialization, a
 
 	cfg := client.Config{
 		Realm:        realm,
-		Logger:       logger,
+		Logger:       log.New(),
 		HelloDetails: hello,
 		AuthHandlers: map[string]client.AuthFunc{
 			"cryptosign": handleCryptosign(pvk),

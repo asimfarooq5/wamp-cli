@@ -37,6 +37,7 @@ import (
 
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/wamp"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ed25519"
 )
 
@@ -113,7 +114,7 @@ func registerInvocationHandler(session *client.Client, procedure string, command
 		if command != "" {
 			err, out, _ := shellOut(command)
 			if err != nil {
-				logger.Println("error: ", err)
+				log.Println("error: ", err)
 			}
 			result = out
 		}
@@ -123,7 +124,7 @@ func registerInvocationHandler(session *client.Client, procedure string, command
 			if invokeCount == 0 {
 				session.Unregister(procedure)
 				time.AfterFunc(1*time.Second, func() {
-					logger.Println("session closing")
+					log.Println("session closing")
 					session.Close()
 				})
 			}
@@ -137,14 +138,13 @@ func registerInvocationHandler(session *client.Client, procedure string, command
 
 func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) {
 	if details != nil {
-		logger.Println(details)
+		log.Println(details)
 	}
-
 	if len(args) != 0 {
 		fmt.Println("args:")
 		jsonString, err := json.MarshalIndent(args, "", "    ")
 		if err != nil {
-			logger.Fatal(err)
+			log.Fatal(err)
 		}
 		fmt.Println(string(jsonString))
 	}
@@ -153,7 +153,7 @@ func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) {
 		fmt.Println("kwargs:")
 		jsonString, err := json.MarshalIndent(kwArgs, "", "    ")
 		if err != nil {
-			logger.Fatal(err)
+			log.Fatal(err)
 		}
 		fmt.Println(string(jsonString))
 	}
@@ -203,7 +203,7 @@ func getKeyPair(privateKeyKex string) (ed25519.PublicKey, ed25519.PrivateKey) {
 	} else if len(privateKeyRaw) == 64 {
 		privateKey = ed25519.NewKeyFromSeed(privateKeyRaw[:32])
 	} else {
-		logger.Fatal("Invalid private key. Cryptosign private key must be either 32 or 64 characters long")
+		log.Fatal("Invalid private key. Cryptosign private key must be either 32 or 64 characters long")
 	}
 
 	publicKey := privateKey.Public().(ed25519.PublicKey)

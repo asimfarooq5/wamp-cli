@@ -34,14 +34,8 @@ import (
 	"github.com/gammazero/nexus/v3/transport/serialize"
 	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/gammazero/workerpool"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
-
-var logger *logrus.Logger
-
-func init() {
-	logger = logrus.New()
-}
 
 func connect(url string, cfg client.Config) (*client.Client, error) {
 
@@ -111,9 +105,9 @@ func Subscribe(session *client.Client, topic string, subscribeOptions map[string
 	}
 	if logSubscribeTime {
 		endTime := time.Now().UnixMilli()
-		logger.Printf("Subscribed to topic '%s' in %dms\n", topic, endTime-startTime)
+		log.Printf("Subscribed to topic '%s' in %dms\n", topic, endTime-startTime)
 	} else {
-		logger.Printf("Subscribed to topic '%s'\n", topic)
+		log.Printf("Subscribed to topic '%s'\n", topic)
 	}
 	return nil
 }
@@ -136,9 +130,9 @@ func actualPublish(session *client.Client, topic string, args wamp.List, kwargs 
 
 	if logPublishTime {
 		endTime := time.Now().UnixMilli()
-		logger.Printf("Published to topic %s in %dms\n", topic, endTime-startTime)
+		log.Printf("Published to topic %s in %dms\n", topic, endTime-startTime)
 	} else {
-		logger.Printf("Published to topic '%s'\n", topic)
+		log.Printf("Published to topic '%s'\n", topic)
 	}
 	return nil
 }
@@ -168,7 +162,7 @@ func Publish(session *client.Client, topic string, args []string, kwargs map[str
 
 	if logPublishTime && repeatPublish > 1 {
 		endTime := time.Now().UnixMilli()
-		logger.Printf("%d calls took %dms\n", repeatPublish, endTime-startTime)
+		log.Printf("%d calls took %dms\n", repeatPublish, endTime-startTime)
 	}
 	return nil
 }
@@ -180,7 +174,7 @@ func Register(session *client.Client, procedure string, command string, delay in
 	hasMaxInvokeCount := invokeCount > 0
 
 	if delay > 0 {
-		logger.Printf("procedure will be registered after %d milliseconds.\n", delay)
+		log.Printf("procedure will be registered after %d milliseconds.\n", delay)
 		time.Sleep(time.Duration(delay) * time.Millisecond)
 	}
 
@@ -196,9 +190,9 @@ func Register(session *client.Client, procedure string, command string, delay in
 	}
 	if logRegisterTime {
 		endTime := time.Now().UnixMilli()
-		logger.Printf("Registered procedure '%s' in %dms\n", procedure, endTime-startTime)
+		log.Printf("Registered procedure '%s' in %dms\n", procedure, endTime-startTime)
 	} else {
-		logger.Printf("Registered procedure '%s'\n", procedure)
+		log.Printf("Registered procedure '%s'\n", procedure)
 	}
 
 	return nil
@@ -236,7 +230,7 @@ func actuallyCall(session *client.Client, procedure string, args wamp.List, kwar
 
 	if logCallTime {
 		endTime := time.Now().UnixMilli()
-		logger.Printf("call took %dms\n", endTime-startTime)
+		log.Printf("call took %dms\n", endTime-startTime)
 	}
 	return result, nil
 }
@@ -267,7 +261,7 @@ func Call(session *client.Client, procedure string, args []string, kwargs map[st
 
 	if logCallTime && repeatCount > 1 {
 		endTime := time.Now().UnixMilli()
-		logger.Printf("%d calls took %dms\n", repeatCount, endTime-startTime)
+		log.Printf("%d calls took %dms\n", repeatCount, endTime-startTime)
 	}
 	return nil
 }
