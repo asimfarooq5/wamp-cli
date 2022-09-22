@@ -85,12 +85,15 @@ func ConnectCryptoSign(url string, realm string, serializer serialize.Serializat
 }
 
 func Subscribe(session *client.Client, topic string, subscribeOptions map[string]string,
-	printDetails bool, logSubscribeTime bool) error {
+	printDetails bool, logSubscribeTime bool, eventReceived chan struct{}) error {
 	eventHandler := func(event *wamp.Event) {
 		if printDetails {
 			argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
 		} else {
 			argsKWArgs(event.Arguments, event.ArgumentsKw, nil)
+		}
+		if eventReceived != nil {
+			eventReceived <- struct{}{}
 		}
 	}
 

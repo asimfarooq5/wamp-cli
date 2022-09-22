@@ -73,6 +73,7 @@ var (
 	subscribeTopic        = subscribe.Arg("topic", "Topic to subscribe.").Required().String()
 	subscribeOptions      = subscribe.Flag("option", "Subscribe option. (May be provided multiple times)").Short('o').StringMap()
 	subscribePrintDetails = subscribe.Flag("details", "Print event details.").Bool()
+	subscribeEventCount   = subscribe.Flag("event-count", "Wait for a given number of events and exit.").Default("0").Int()
 	logSubscribeTime      = subscribe.Flag("time", "Log time to join session and subscribe a topic.").Bool()
 	concurrentSubscribe   = subscribe.Flag("concurrency", "Subscribe to topic concurrently. "+
 		"Only effective when called with --parallel.").Default("1").Int()
@@ -268,7 +269,9 @@ func main() {
 		if *subscribeSessionCount < 0 {
 			log.Fatalln("parallel must be greater than zero")
 		}
-
+		if *subscribeEventCount < 0 {
+			log.Fatalln("event count must be greater than zero")
+		}
 		if *logSubscribeTime {
 			startTime = time.Now().UnixMilli()
 		}
@@ -295,26 +298,51 @@ func main() {
 			wp.StopWait()
 		}()
 
+		// buffer to match the number of sessions, otherwise we'd have to
+		// drain the channel
+		eventC := make(chan struct{}, len(sessions))
 		wp := workerpool.New(*concurrentSubscribe)
 		for _, session := range sessions {
 			sess := session
 			wp.Submit(func() {
-				if err = core.Subscribe(sess, *subscribeTopic, *subscribeOptions, *subscribePrintDetails, *logSubscribeTime); err != nil {
+				err := core.Subscribe(sess, *subscribeTopic, *subscribeOptions,
+					*subscribePrintDetails, *logSubscribeTime, eventC)
+				if err != nil {
 					log.Fatalln(err)
 				}
 			})
 		}
 		wp.StopWait()
 
+		// TODO find a nicer way of waiting for all sessions to complete
+		allSessionsDoneC := make(chan struct{}, 1)
+		go func() {
+			for _, session := range sessions {
+				<-session.Done()
+			}
+			log.Print("router gone")
+			allSessionsDoneC <- struct{}{}
+		}()
+
 		// Wait for CTRL-c or client close while handling events.
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt)
-		for _, session := range sessions {
+		events := 0
+		for {
 			select {
+			case <-eventC:
+				events++
+				if *subscribeEventCount > 0 && events == *subscribeEventCount {
+					// note this will race against session
+					// goroutines possibly trying to send to
+					// event channel but nothing is
+					// receiving from it
+					return
+				}
 			case <-sigChan:
 				return
-			case <-session.Done():
-				log.Print("Router gone, exiting")
+			case <-allSessionsDoneC:
+				return
 			}
 		}
 
