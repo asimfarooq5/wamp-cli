@@ -34,7 +34,6 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/workerpool"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -61,13 +60,15 @@ var (
 		Envar("WICK_TICKET").String()
 	serializer = kingpin.Flag("serializer", "The serializer to use.").Envar("WICK_SERIALIZER").
 			Default("json").Enum("json", "msgpack", "cbor")
-	profile = kingpin.Flag("profile", "").Envar("WICK_PROFILE").String()
+	profile = kingpin.Flag("profile", "Get details from in '$HOME/.wick/config'.For default section use 'DEFAULT'.").Envar("WICK_PROFILE").String()
+	debug   = kingpin.Flag("debug", "Enable debug logging.").Bool()
 
 	join             = kingpin.Command("join-only", "Start wamp session.")
-	joinSessionCount = join.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
-	concurrentJoin   = join.Flag("concurrency", "Start wamp session concurrently").Default("1").Int()
-	logJoinTime      = join.Flag("time", "Log session join time").Bool()
-	keepaliveJoin    = join.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
+	joinSessionCount = join.Flag("parallel", "Start requested number of wamp sessions.").Default("1").Int()
+	concurrentJoin   = join.Flag("concurrency", "Start wamp session concurrently. "+
+		"Only effective when called with --parallel.").Default("1").Int()
+	logJoinTime   = join.Flag("time", "Log session join time").Bool()
+	keepaliveJoin = join.Flag("keepalive", "Interval between websocket pings.").Default("0").Int()
 
 	subscribe             = kingpin.Command("subscribe", "Subscribe a topic.")
 	subscribeTopic        = subscribe.Arg("topic", "Topic to subscribe.").Required().String()
@@ -77,8 +78,8 @@ var (
 	logSubscribeTime      = subscribe.Flag("time", "Log time to join session and subscribe a topic.").Bool()
 	concurrentSubscribe   = subscribe.Flag("concurrency", "Subscribe to topic concurrently. "+
 		"Only effective when called with --parallel.").Default("1").Int()
-	subscribeSessionCount = subscribe.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
-	keepaliveSubscribe    = subscribe.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
+	subscribeSessionCount = subscribe.Flag("parallel", "Start requested number of wamp sessions.").Default("1").Int()
+	keepaliveSubscribe    = subscribe.Flag("keepalive", "Interval between websocket pings.").Default("0").Int()
 
 	publish            = kingpin.Command("publish", "Publish to a topic.")
 	publishTopic       = publish.Arg("topic", "Topic to publish.").Required().String()
@@ -89,9 +90,9 @@ var (
 	logPublishTime     = publish.Flag("time", "Log publish return time.").Bool()
 	delayPublish       = publish.Flag("delay", "Provide the delay in milliseconds.").Default("0").Int()
 	concurrentPublish  = publish.Flag("concurrency", "Publish to the topic concurrently. "+
-		"Only effective when called with --repeat.").Default("1").Int()
+		"Only effective when called with --repeat and/or --parallel.").Default("1").Int()
 	publishSessionCount = publish.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
-	keepalivePublish    = publish.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
+	keepalivePublish    = publish.Flag("keepalive", "Interval between websocket pings.").Default("0").Int()
 
 	register           = kingpin.Command("register", "Register a procedure.")
 	registerProcedure  = register.Arg("procedure", "Procedure name.").Required().String()
@@ -102,8 +103,8 @@ var (
 	logRegisterTime    = register.Flag("time", "Log time to join session and register procedure.").Bool()
 	concurrentRegister = register.Flag("concurrency", "Register procedure concurrently. "+
 		"Only effective when called with --parallel.").Default("1").Int()
-	registerSessionCount = register.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
-	keepaliveRegister    = register.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
+	registerSessionCount = register.Flag("parallel", "Start requested number of wamp sessions.").Default("1").Int()
+	keepaliveRegister    = register.Flag("keepalive", "Interval between websocket pings.").Default("0").Int()
 
 	call            = kingpin.Command("call", "Call a procedure.")
 	callProcedure   = call.Arg("procedure", "Procedure to call.").Required().String()
@@ -114,9 +115,9 @@ var (
 	delayCall       = call.Flag("delay", "Provide the delay in milliseconds.").Default("0").Int()
 	callOptions     = call.Flag("option", "Procedure call option. (May be provided multiple times)").Short('o').StringMap()
 	concurrentCalls = call.Flag("concurrency", "Make concurrent calls without waiting for the result for each to return. "+
-		"Only effective when called with --repeat.").Default("1").Int()
-	callSessionCount = call.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
-	keepaliveCall    = call.Flag("keepalive", "interval between websocket pings.").Default("0").Int()
+		"Only effective when called with --repeat and/or --parallel.").Default("1").Int()
+	callSessionCount = call.Flag("parallel", "Start requested number of wamp sessions.").Default("1").Int()
+	keepaliveCall    = call.Flag("keepalive", "Interval between websocket pings.").Default("0").Int()
 
 	keyGen     = kingpin.Command("keygen", "Generate ed25519 keypair.").Hidden()
 	saveToFile = keyGen.Flag("output-file", "Write keys to file.").Short('o').Hidden().Bool()
@@ -124,88 +125,12 @@ var (
 
 const versionString = "0.5.0"
 
-func connect(logTime bool, keepalive int) (*client.Client, error) {
-	var session *client.Client
-	var err error
-	var startTime int64
-	serializerToUse := getSerializerByName(*serializer)
-
-	if logTime {
-		startTime = time.Now().UnixMilli()
-	}
-	switch *authMethod {
-	case "anonymous":
-		if *privateKey != "" {
-			return nil, fmt.Errorf("private key not needed for anonymous auth")
-		}
-		if *ticket != "" {
-			return nil, fmt.Errorf("ticket not needed for anonymous auth")
-		}
-		if *secret != "" {
-			return nil, fmt.Errorf("secret not needed for anonymous auth")
-		}
-		session, err = core.ConnectAnonymous(*url, *realm, serializerToUse, *authid, *authrole, keepalive)
-		if err != nil {
-			return nil, err
-		}
-	case "ticket":
-		if *ticket == "" {
-			return nil, fmt.Errorf("must provide ticket when authMethod is ticket")
-		}
-		session, err = core.ConnectTicket(*url, *realm, serializerToUse, *authid, *authrole, *ticket, keepalive)
-		if err != nil {
-			return nil, err
-		}
-	case "wampcra":
-		if *secret == "" {
-			return nil, fmt.Errorf("must provide secret when authMethod is wampcra")
-		}
-		session, err = core.ConnectCRA(*url, *realm, serializerToUse, *authid, *authrole, *secret, keepalive)
-		if err != nil {
-			return nil, err
-		}
-	case "cryptosign":
-		if *privateKey == "" {
-			return nil, fmt.Errorf("must provide private key when authMethod is cryptosign")
-		}
-		session, err = core.ConnectCryptoSign(*url, *realm, serializerToUse, *authid, *authrole, *privateKey, keepalive)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if logTime {
-		endTime := time.Now().UnixMilli()
-		log.Printf("session joined in %dms\n", endTime-startTime)
-	}
-	return session, err
-}
-
-func getSessions(sessionCount int, concurrency int, logTime bool, keepalive int) ([]*client.Client, error) {
-	var sessions []*client.Client
-	wp := workerpool.New(concurrency)
-	resC := make(chan error, sessionCount)
-	for i := 0; i < sessionCount; i++ {
-		wp.Submit(func() {
-			session, err := connect(logTime, keepalive)
-			sessions = append(sessions, session)
-			resC <- err
-		})
-	}
-
-	wp.StopWait()
-	if err := getErrorFromErrorChannel(resC); err != nil {
-		return nil, err
-	}
-	return sessions, nil
-}
-
 func main() {
 	kingpin.Version(versionString).VersionFlag.Short('v')
 	cmd := kingpin.Parse()
 
-	if *profile != "" {
-		readFromProfile()
+	if *debug {
+		log.SetLevel(log.DebugLevel)
 	}
 
 	if *privateKey != "" && *ticket != "" {
@@ -221,17 +146,38 @@ func main() {
 		*authMethod = selectAuthMethod(*privateKey, *ticket, *secret)
 	}
 
+	clientInfo := &core.ClientInfo{}
+	var err error
+	if *profile != "" {
+		clientInfo, err = readFromProfile(*profile)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	} else {
+		clientInfo = &core.ClientInfo{
+			Url:        *url,
+			Realm:      *realm,
+			Serializer: getSerializerByName(*serializer),
+			Authid:     *authid,
+			Authrole:   *authrole,
+			AuthMethod: *authMethod,
+			PrivateKey: *privateKey,
+			Ticket:     *ticket,
+			Secret:     *secret,
+		}
+	}
+
 	switch cmd {
 	case join.FullCommand():
-		var startTime int64
-		if *joinSessionCount < 0 {
-			log.Fatalln("parallel must be greater than zero")
+		if err = validateData(*joinSessionCount, *concurrentJoin, *keepaliveJoin); err != nil {
+			log.Fatalln(err)
 		}
 
+		var startTime int64
 		if *logJoinTime {
 			startTime = time.Now().UnixMilli()
 		}
-		sessions, err := getSessions(*joinSessionCount, *concurrentJoin, *logJoinTime, *keepaliveJoin)
+		sessions, err := getSessions(clientInfo, *joinSessionCount, *concurrentJoin, *keepaliveJoin)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -265,17 +211,18 @@ func main() {
 		}
 
 	case subscribe.FullCommand():
-		var startTime int64
-		if *subscribeSessionCount < 0 {
-			log.Fatalln("parallel must be greater than zero")
+		if err = validateData(*subscribeSessionCount, *concurrentSubscribe, *keepaliveSubscribe); err != nil {
+			log.Fatalln(err)
 		}
 		if *subscribeEventCount < 0 {
 			log.Fatalln("event count must be greater than zero")
 		}
+
+		var startTime int64
 		if *logSubscribeTime {
 			startTime = time.Now().UnixMilli()
 		}
-		sessions, err := getSessions(*subscribeSessionCount, *concurrentSubscribe, *logSubscribeTime, *keepaliveSubscribe)
+		sessions, err := getSessions(clientInfo, *subscribeSessionCount, *concurrentSubscribe, *keepaliveSubscribe)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -347,18 +294,18 @@ func main() {
 		}
 
 	case publish.FullCommand():
+		if err = validateData(*publishSessionCount, *concurrentPublish, *keepalivePublish); err != nil {
+			log.Fatalln(err)
+		}
+
 		var startTime int64
 		if *repeatPublish < 1 {
 			log.Fatalln("repeat count must be greater than zero")
 		}
-		if *publishSessionCount < 0 {
-			log.Fatalln("parallel must be greater than zero")
-		}
-
 		if *logPublishTime {
 			startTime = time.Now().UnixMilli()
 		}
-		sessions, err := getSessions(*publishSessionCount, *concurrentPublish, *logPublishTime, *keepalivePublish)
+		sessions, err := getSessions(clientInfo, *publishSessionCount, *concurrentPublish, *keepalivePublish)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -392,15 +339,15 @@ func main() {
 		wp.StopWait()
 
 	case register.FullCommand():
-		var startTime int64
-		if *registerSessionCount < 0 {
-			log.Fatalln("parallel must be greater than zero")
+		if err = validateData(*registerSessionCount, *concurrentRegister, *keepaliveRegister); err != nil {
+			log.Fatalln(err)
 		}
 
+		var startTime int64
 		if *logRegisterTime {
 			startTime = time.Now().UnixMilli()
 		}
-		sessions, err := getSessions(*registerSessionCount, *concurrentRegister, *logRegisterTime, *keepaliveRegister)
+		sessions, err := getSessions(clientInfo, *registerSessionCount, *concurrentRegister, *keepaliveRegister)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -447,6 +394,10 @@ func main() {
 		}
 
 	case call.FullCommand():
+		if err = validateData(*callSessionCount, *concurrentCalls, *keepaliveCall); err != nil {
+			log.Fatalln(err)
+		}
+
 		var startTime int64
 		if *repeatCount < 1 {
 			log.Fatalln("repeat count must be greater than zero")
@@ -458,7 +409,7 @@ func main() {
 		if *logCallTime {
 			startTime = time.Now().UnixMilli()
 		}
-		sessions, err := getSessions(*callSessionCount, *concurrentCalls, *logCallTime, *keepaliveCall)
+		sessions, err := getSessions(clientInfo, *callSessionCount, *concurrentCalls, *keepaliveCall)
 		if err != nil {
 			log.Fatalln(err)
 		}

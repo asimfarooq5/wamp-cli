@@ -27,16 +27,18 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
+	"sync"
 
+	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/transport/serialize"
-	log "github.com/sirupsen/logrus"
+	"github.com/gammazero/workerpool"
 	"gopkg.in/ini.v1"
+
+	"github.com/s-things/wick/core"
 )
 
 func getSerializerByName(name string) serialize.Serialization {
-
 	switch name {
 	case "json":
 		return serialize.JSON
@@ -60,59 +62,70 @@ func selectAuthMethod(privateKey string, ticket string, secret string) string {
 	return "anonymous"
 }
 
-func userHomeDir() string {
-	if runtime.GOOS == "windows" {
-		home := os.Getenv("HOMEDRIVE") + os.Getenv("HOMEPATH")
-		if home == "" {
-			home = os.Getenv("USERPROFILE")
-		}
-		return home
-	} else if runtime.GOOS == "linux" {
-		home := os.Getenv("XDG_CONFIG_HOME")
-		if home != "" {
-			return home
-		}
+func validateData(sessionCount int, concurrency int, keepAlive int) error {
+	if sessionCount < 1 {
+		return fmt.Errorf("parallel must be greater than zero")
 	}
-	return os.Getenv("HOME")
+	if concurrency < 1 {
+		return fmt.Errorf("concurrency must be greater than zero")
+	}
+	if keepAlive < 0 {
+		return fmt.Errorf("keepalive interval must be greater than zero")
+	}
+
+	return nil
 }
 
-func readFromProfile() {
-	cfg, err := ini.Load(fmt.Sprintf("%s/.wick/config", userHomeDir()))
+func readFromProfile(profile string) (*core.ClientInfo, error) {
+	clientInfo := &core.ClientInfo{}
+	cfg, err := ini.Load(os.ExpandEnv("$HOME/.wick/config"))
 	if err != nil {
-		log.Fatalf("Fail to read config: %v", err)
+		return nil, fmt.Errorf("fail to read config: %v", err)
 	}
 
-	section, err := cfg.GetSection(*profile)
+	section, err := cfg.GetSection(profile)
 	if err != nil {
-		log.Fatalf("Error in getting section: %s", err)
+		return nil, fmt.Errorf("error in getting section: %s", err)
 	}
 
-	*url = section.Key("url").Validate(func(s string) string {
+	clientInfo.Url = section.Key("url").Validate(func(s string) string {
 		if len(s) == 0 {
 			return "ws://localhost:8080/ws"
 		}
 		return s
 	})
-	*realm = section.Key("realm").Validate(func(s string) string {
+	clientInfo.Realm = section.Key("realm").Validate(func(s string) string {
 		if len(s) == 0 {
 			return "realm1"
 		}
 		return s
 	})
-	*authid = section.Key("authid").String()
-	*authrole = section.Key("authrole").String()
-	*authMethod = section.Key("authmethod").String()
-	if *authMethod == "cryptosign" {
-		*privateKey = section.Key("private-key").String()
-	} else if *authMethod == "ticket" {
-		*ticket = section.Key("ticket").String()
-	} else if *authMethod == "wampcra" {
-		*secret = section.Key("secret").String()
+	serializer := section.Key("serializer").String()
+	switch serializer {
+	case "msgpack", "cbor", "json":
+		clientInfo.Serializer = getSerializerByName(serializer)
+	case "":
+		// default to json if none was provided
+		clientInfo.Serializer = getSerializerByName("json")
+	default:
+		return nil, fmt.Errorf("serailizer must be json, msgpack or cbor")
 	}
+
+	clientInfo.Authid = section.Key("authid").String()
+	clientInfo.Authrole = section.Key("authrole").String()
+	clientInfo.AuthMethod = section.Key("authmethod").String()
+	if clientInfo.AuthMethod == "cryptosign" {
+		clientInfo.PrivateKey = section.Key("private-key").String()
+	} else if clientInfo.AuthMethod == "ticket" {
+		clientInfo.Ticket = section.Key("ticket").String()
+	} else if clientInfo.AuthMethod == "wampcra" {
+		clientInfo.Secret = section.Key("secret").String()
+	}
+
+	return clientInfo, nil
 }
 
 func getErrorFromErrorChannel(resC chan error) error {
-	close(resC)
 	var errs []string
 	for err := range resC {
 		if err != nil {
@@ -123,4 +136,69 @@ func getErrorFromErrorChannel(resC chan error) error {
 		return fmt.Errorf("got errors:\n%v", strings.Join(errs, "\n"))
 	}
 	return nil
+}
+
+func connect(clientInfo *core.ClientInfo, keepalive int) (*client.Client, error) {
+	var session *client.Client
+	var err error
+
+	switch clientInfo.AuthMethod {
+	case "anonymous":
+		if clientInfo.PrivateKey != "" {
+			return nil, fmt.Errorf("private key not needed for anonymous auth")
+		}
+		if clientInfo.Ticket != "" {
+			return nil, fmt.Errorf("ticket not needed for anonymous auth")
+		}
+		if clientInfo.Secret != "" {
+			return nil, fmt.Errorf("secret not needed for anonymous auth")
+		}
+		session, err = core.ConnectAnonymous(clientInfo, keepalive)
+	case "ticket":
+		if clientInfo.Ticket == "" {
+			return nil, fmt.Errorf("must provide ticket when authMethod is ticket")
+		}
+		session, err = core.ConnectTicket(clientInfo, keepalive)
+	case "wampcra":
+		if clientInfo.Secret == "" {
+			return nil, fmt.Errorf("must provide secret when authMethod is wampcra")
+		}
+		session, err = core.ConnectCRA(clientInfo, keepalive)
+	case "cryptosign":
+		if clientInfo.PrivateKey == "" {
+			return nil, fmt.Errorf("must provide private key when authMethod is cryptosign")
+		}
+		session, err = core.ConnectCryptoSign(clientInfo, keepalive)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return session, err
+}
+
+func getSessions(clientInfo *core.ClientInfo, sessionCount int, concurrency int,
+	keepalive int) ([]*client.Client, error) {
+	var sessions []*client.Client
+	var mutex sync.Mutex
+	var session *client.Client
+	var err error
+	wp := workerpool.New(concurrency)
+	resC := make(chan error, sessionCount)
+	for i := 0; i < sessionCount; i++ {
+		wp.Submit(func() {
+			session, err = connect(clientInfo, keepalive)
+			mutex.Lock()
+			sessions = append(sessions, session)
+			mutex.Unlock()
+			resC <- err
+		})
+	}
+
+	wp.StopWait()
+	close(resC)
+	if err = getErrorFromErrorChannel(resC); err != nil {
+		return nil, err
+	}
+	return sessions, nil
 }

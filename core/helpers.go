@@ -36,10 +36,23 @@ import (
 	"time"
 
 	"github.com/gammazero/nexus/v3/client"
+	"github.com/gammazero/nexus/v3/transport/serialize"
 	"github.com/gammazero/nexus/v3/wamp"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ed25519"
 )
+
+type ClientInfo struct {
+	Url        string
+	Realm      string
+	Serializer serialize.Serialization
+	Authid     string
+	Authrole   string
+	AuthMethod string
+	PrivateKey string
+	Ticket     string
+	Secret     string
+}
 
 func listToWampList(args []string) wamp.List {
 	var arguments wamp.List
@@ -104,15 +117,16 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 
 func registerInvocationHandler(session *client.Client, procedure string, command string,
 	invokeCount int, hasMaxInvokeCount bool) func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
-
 	invocationHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
-
-		argsKWArgs(inv.Arguments, inv.ArgumentsKw, nil)
+		output, err := argsKWArgs(inv.Arguments, inv.ArgumentsKw, nil)
+		if err != nil {
+			return client.InvokeResult{Err: "wamp.error.internal_error", Args: wamp.List{err}}
+		}
+		fmt.Println(output)
 
 		result := ""
-
 		if command != "" {
-			err, out, _ := shellOut(command)
+			out, _, err := shellOut(command)
 			if err != nil {
 				log.Println("error: ", err)
 			}
@@ -131,71 +145,92 @@ func registerInvocationHandler(session *client.Client, procedure string, command
 		}
 
 		return client.InvokeResult{Args: wamp.List{result}}
-
 	}
 	return invocationHandler
 }
 
-func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) {
+func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) (string, error) {
+	var outputString string
 	if details != nil {
-		log.Println(details)
+		jsonString, err := json.MarshalIndent(details, "", "    ")
+		if err != nil {
+			return "", err
+		}
+		outputString = fmt.Sprintf("details:%s\n", jsonString)
 	}
 	if len(args) != 0 {
-		fmt.Println("args:")
 		jsonString, err := json.MarshalIndent(args, "", "    ")
 		if err != nil {
-			log.Fatal(err)
+			return "", err
 		}
-		fmt.Println(string(jsonString))
+		outputString = fmt.Sprintf("%sargs:\n%s", outputString, jsonString)
 	}
 
 	if len(kwArgs) != 0 {
-		fmt.Println("kwargs:")
 		jsonString, err := json.MarshalIndent(kwArgs, "", "    ")
 		if err != nil {
-			log.Fatal(err)
+			return "", err
 		}
-		fmt.Println(string(jsonString))
+		outputString = fmt.Sprintf("%skwargs:\n%s", outputString, jsonString)
 	}
 
-	if len(args) == 0 && len(kwArgs) == 0 {
-		fmt.Println("args: []")
-		fmt.Println("kwargs: {}")
+	if len(args) == 0 && len(kwArgs) == 0 && details == nil {
+		outputString = fmt.Sprintf("args: []\nkwargs: {}")
 	}
+	return outputString, nil
 }
 
-func progressArgsKWArgs(args wamp.List, kwArgs wamp.Dict) {
-
+func progressArgsKWArgs(args wamp.List, kwArgs wamp.Dict) (string, error) {
+	var outputString string
 	if len(args) != 0 {
-		fmt.Print("args: ", args, "  ")
+		jsonString, err := json.Marshal(args)
+		if err != nil {
+			return "", err
+		}
+		outputString = fmt.Sprintf("args: %s  ", jsonString)
 	}
 
 	if len(kwArgs) != 0 {
-		fmt.Print("kwargs: ")
-		bs, _ := json.Marshal(kwArgs)
-		fmt.Print(string(bs))
+		bs, err := json.Marshal(kwArgs)
+		if err != nil {
+			return "", err
+		}
+		outputString = fmt.Sprintf("%skwargs: %s", outputString, bs)
 	}
 
 	if len(args) == 0 && len(kwArgs) == 0 {
-		fmt.Print("args: []", "kwargs: {}")
+		outputString = fmt.Sprintf("args: [] kwargs: {}")
 	}
 
-	fmt.Println()
+	outputString = fmt.Sprintf("%s\n", outputString)
+
+	return outputString, nil
 }
 
-func shellOut(command string) (error, string, string) {
+func shellOut(command string) (string, string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	var cmd *exec.Cmd
-	cmd = exec.Command("bash", "-c", command)
+	cmd = exec.Command("sh", "-c", command)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
-	return err, stdout.String(), stderr.String()
+	return stdout.String(), stderr.String(), err
 }
 
-func getKeyPair(privateKeyKex string) (ed25519.PublicKey, ed25519.PrivateKey) {
-	privateKeyRaw, _ := hex.DecodeString(privateKeyKex)
+func buildStringFromMap(brokerFeatures map[string]interface{}) string {
+	var builder strings.Builder
+	for key, value := range brokerFeatures {
+		fmt.Fprintf(&builder, "%s=%v, ", key, value)
+	}
+	return strings.TrimRight(builder.String(), ", ")
+}
+
+func getKeyPair(privateKeyKex string) (ed25519.PublicKey, ed25519.PrivateKey, error) {
+	privateKeyRaw, err := hex.DecodeString(privateKeyKex)
+	if err != nil {
+		return nil, nil, err
+	}
 	var privateKey ed25519.PrivateKey
 
 	if len(privateKeyRaw) == 32 {
@@ -203,25 +238,25 @@ func getKeyPair(privateKeyKex string) (ed25519.PublicKey, ed25519.PrivateKey) {
 	} else if len(privateKeyRaw) == 64 {
 		privateKey = ed25519.NewKeyFromSeed(privateKeyRaw[:32])
 	} else {
-		log.Fatal("Invalid private key. Cryptosign private key must be either 32 or 64 characters long")
+		return nil, nil,
+			fmt.Errorf("invalid private key: Cryptosign private key must be either 32 or 64 characters long")
 	}
 
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 
-	return publicKey, privateKey
+	return publicKey, privateKey, nil
 }
 
 func sanitizeURL(url string) string {
-	if strings.HasPrefix(url, "rs") {
-		return "tcp" + strings.TrimPrefix(url, "rs")
-	} else if strings.HasPrefix(url, "rss") {
+	if strings.HasPrefix(url, "rss") {
 		return "tcp" + strings.TrimPrefix(url, "rss")
+	} else if strings.HasPrefix(url, "rs") {
+		return "tcp" + strings.TrimPrefix(url, "rs")
 	}
 	return url
 }
 
 func getErrorFromErrorChannel(resC chan error) error {
-	close(resC)
 	var errs []string
 	for err := range resC {
 		if err != nil {

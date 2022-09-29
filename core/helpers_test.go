@@ -22,11 +22,16 @@
 *
  */
 
-package core
+package core_test
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/gammazero/nexus/v3/wamp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/s-things/wick/core"
 )
 
 const (
@@ -34,34 +39,112 @@ const (
 )
 
 func TestPrivateHexToKeyPair(t *testing.T) {
-	publicKey, privateKey := getKeyPair(privateKeyHex)
+	publicKey, privateKey, err := core.GetKeyPair(privateKeyHex)
+	require.NoError(t, err)
+	assert.NotNil(t, publicKey, "public key is nil")
+	assert.NotNil(t, privateKey, "private key is nil")
+}
 
-	if publicKey == nil {
-		t.Errorf("public key is nil")
+func TestArgsKWArgs(t *testing.T) {
+	for _, data := range []struct {
+		args           wamp.List
+		kwargs         wamp.Dict
+		details        wamp.Dict
+		expectedResult string
+	}{
+		{wamp.List{"test", 1, true, "1.0"}, wamp.Dict{}, nil, `args:
+[
+    "test",
+    1,
+    true,
+    "1.0"
+]`},
+		{wamp.List{}, wamp.Dict{"key": "value", "key2": 1, "key3": false}, nil, `kwargs:
+{
+    "key": "value",
+    "key2": 1,
+    "key3": false
+}`},
+		{wamp.List{"test", 1, true, "1.0"}, wamp.Dict{"key": "value", "key2": 1, "key3": false}, nil, `args:
+[
+    "test",
+    1,
+    true,
+    "1.0"
+]kwargs:
+{
+    "key": "value",
+    "key2": 1,
+    "key3": false
+}`},
+		{wamp.List{"test", 1, true, "1.0"}, wamp.Dict{"key": "value", "key2": 1, "key3": false}, wamp.Dict{"details": "wamp details"}, `details:{
+    "details": "wamp details"
+}
+args:
+[
+    "test",
+    1,
+    true,
+    "1.0"
+]kwargs:
+{
+    "key": "value",
+    "key2": 1,
+    "key3": false
+}`},
+		{wamp.List{}, wamp.Dict{}, wamp.Dict{"details": "wamp details"}, `details:{
+    "details": "wamp details"
+}
+`},
+		{wamp.List{}, wamp.Dict{}, nil, `args: []
+kwargs: {}`},
+	} {
+		outputString, err := core.ArgsKWArgs(data.args, data.kwargs, data.details)
+		require.NoError(t, err)
+		assert.Equal(t, outputString, data.expectedResult)
 	}
+}
 
-	if privateKey == nil {
-		t.Errorf("private key is nil")
+func TestProgressArgsKWArgs(t *testing.T) {
+	for _, data := range []struct {
+		args           wamp.List
+		kwargs         wamp.Dict
+		expectedResult string
+	}{
+		{wamp.List{"test", 1, true, "1.0"}, wamp.Dict{}, `args: ["test",1,true,"1.0"]  
+`},
+		{wamp.List{}, wamp.Dict{"key": "value", "key2": 1, "key3": false}, `kwargs: {"key":"value","key2":1,"key3":false}
+`},
+		{wamp.List{"test", 1, true, "1.0"}, wamp.Dict{"key": "value", "key2": 1, "key3": false}, `args: ["test",1,true,"1.0"]  kwargs: {"key":"value","key2":1,"key3":false}
+`},
+		{wamp.List{}, wamp.Dict{}, `args: [] kwargs: {}
+`},
+	} {
+		outputString, err := core.ProgressArgsKWArgs(data.args, data.kwargs)
+		require.NoError(t, err)
+		assert.Equal(t, outputString, data.expectedResult)
 	}
 }
 
 func TestUrlSanitization(t *testing.T) {
-	url := sanitizeURL("rs://localhost:8080/")
-	if !strings.HasPrefix(url, "tcp") {
-		t.Error("url sanitization failed")
-	}
-
-	url = sanitizeURL("rss://localhost:8080/")
-	if !strings.HasPrefix(url, "tcp") {
-		t.Error("url sanitization failed")
+	for _, data := range []struct {
+		url          string
+		sanitizedUrl string
+	}{
+		{"rs://localhost:8080/", "tcp://localhost:8080/"},
+		{"rss://localhost:8080/", "tcp://localhost:8080/"},
+	} {
+		url := core.SanitizeURL(data.url)
+		assert.Equal(t, data.sanitizedUrl, url, "url sanitization failed")
 	}
 }
 
 func TestListToWampList(t *testing.T) {
-	inputList := []string{"string", "1", "1.1", "true", "[\"group_1\",\"group_2\", 1, true]",
-		"{\"firstKey\":\"value\", \"secondKey\":2}",
-		"[{\"firstKey\":\"value\", \"secondKey\":2}, {\"firstKey\":\"value\", \"secondKey\":2}]"}
-	wampList := listToWampList(inputList)
+	inputList := []string{"string", "1", "1.1", "true", `["group_1","group_2", 1, true]`,
+		`{"firstKey":"value", "secondKey":2}`,
+		`[{"firstKey":"value", "secondKey":2}, {"firstKey":"value", "secondKey":2}]`}
+
+	wampList := core.ListToWampList(inputList)
 
 	if len(wampList) != len(inputList) {
 		t.Error("error in list conversion")
@@ -94,9 +177,9 @@ func TestListToWampList(t *testing.T) {
 
 func TestDictToWampDict(t *testing.T) {
 	inputDict := map[string]string{"string": "string", "int": "1", "float": "1.1", "bool": "true",
-		"list": "[\"group_1\",\"group_2\", 1, true]", "json": "{\"firstKey\":\"value\", \"secondKey\":2}",
-		"jsonList": "[{\"firstKey\":\"value\", \"secondKey\":2}, {\"firstKey\":\"value\", \"secondKey\":2}]"}
-	wampDict := dictToWampDict(inputDict)
+		"list": `["group_1","group_2", 1, true]`, "json": `{"firstKey":"value", "secondKey":2}`,
+		"jsonList": `[{"firstKey":"value", "secondKey":2}, {"firstKey":"value", "secondKey":2}]`}
+	wampDict := core.DictToWampDict(inputDict)
 	if len(inputDict) != len(wampDict) {
 		t.Error("error in map conversion")
 	}

@@ -65,8 +65,6 @@ func handleCRAAuth(secret string) func(c *wamp.Challenge) (string, wamp.Dict) {
 func deriveKey(saltStr string, secret string, iterations int, keyLength int) []byte {
 	// If salting info give, then compute a derived key using PBKDF2.
 	salt := []byte(saltStr)
-	//iters, _ := wamp.AsInt64(c.Extra["iterations"])
-	//keylen, _ := wamp.AsInt64(c.Extra["keylen"])
 
 	if iterations == 0 {
 		iterations = 1000

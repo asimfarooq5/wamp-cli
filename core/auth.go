@@ -92,15 +92,18 @@ func getCRAAuthConfig(realm string, serializer serialize.Serialization, authid s
 }
 
 func getCryptosignAuthConfig(realm string, serializer serialize.Serialization, authid string, authrole string,
-	privateKey string, keepAliveInterval int) client.Config {
+	privateKey string, keepAliveInterval int) (*client.Config, error) {
+	publicKey, pvk, err := getKeyPair(privateKey)
+	if err != nil {
+		return nil, err
+	}
 
 	hello := getBaseHello(authid, authrole)
 
-	publicKey, pvk := getKeyPair(privateKey)
 	// Extend hello details with pubkey
 	hello["authextra"] = wamp.Dict{"pubkey": hex.EncodeToString(publicKey)}
 
-	cfg := client.Config{
+	cfg := &client.Config{
 		Realm:        realm,
 		Logger:       log.New(),
 		HelloDetails: hello,
@@ -111,5 +114,5 @@ func getCryptosignAuthConfig(realm string, serializer serialize.Serialization, a
 		WsCfg:         transport.WebsocketConfig{KeepAlive: time.Duration(keepAliveInterval) * time.Second},
 	}
 
-	return cfg
+	return cfg, err
 }

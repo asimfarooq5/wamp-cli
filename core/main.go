@@ -25,72 +25,76 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/gammazero/nexus/v3/client"
-	"github.com/gammazero/nexus/v3/transport/serialize"
 	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/gammazero/workerpool"
 	log "github.com/sirupsen/logrus"
 )
 
 func connect(url string, cfg client.Config) (*client.Client, error) {
-
 	url = sanitizeURL(url)
 
 	session, err := client.ConnectNet(context.Background(), url, cfg)
 	if err != nil {
 		return nil, err
 	} else {
-		// FIXME: use a better logger and only print such messages in debug mode.
-		//logger.Println("Connected to ", baseUrl)
+		log.Debugln("Connected to", url)
+		log.Debugf("attached session '%v' to realm '%s' (authid='%s', authrole='%s', authmethod='%s', authprovider='%s')",
+			session.ID(), cfg.Realm, session.RealmDetails()["authid"], session.RealmDetails()["authrole"],
+			session.RealmDetails()["authmethod"], session.RealmDetails()["authprovider"])
+		brokerFeatures := buildStringFromMap(session.RealmDetails()["roles"].(map[string]interface{})["broker"].(map[string]interface{})["features"].(map[string]interface{}))
+		dealerFeatures := buildStringFromMap(session.RealmDetails()["roles"].(map[string]interface{})["dealer"].(map[string]interface{})["features"].(map[string]interface{}))
+		log.Debugf("broker features(%s), dealer features(%s)", brokerFeatures, dealerFeatures)
 	}
 
 	return session, nil
 }
 
-func ConnectAnonymous(url string, realm string, serializer serialize.Serialization, authid string,
-	authrole string, keepaliveInterval int) (*client.Client, error) {
+func ConnectAnonymous(clientInfo *ClientInfo, keepaliveInterval int) (*client.Client, error) {
+	cfg := getAnonymousAuthConfig(clientInfo.Realm, clientInfo.Serializer, clientInfo.Authid,
+		clientInfo.Authrole, keepaliveInterval)
 
-	cfg := getAnonymousAuthConfig(realm, serializer, authid, authrole, keepaliveInterval)
-
-	return connect(url, cfg)
+	return connect(clientInfo.Url, cfg)
 }
 
-func ConnectTicket(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	ticket string, keepaliveInterval int) (*client.Client, error) {
+func ConnectTicket(clientInfo *ClientInfo, keepaliveInterval int) (*client.Client, error) {
+	cfg := getTicketAuthConfig(clientInfo.Realm, clientInfo.Serializer, clientInfo.Authid,
+		clientInfo.Authrole, clientInfo.Ticket, keepaliveInterval)
 
-	cfg := getTicketAuthConfig(realm, serializer, authid, authrole, ticket, keepaliveInterval)
-
-	return connect(url, cfg)
+	return connect(clientInfo.Url, cfg)
 }
 
-func ConnectCRA(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	secret string, keepaliveInterval int) (*client.Client, error) {
+func ConnectCRA(clientInfo *ClientInfo, keepaliveInterval int) (*client.Client, error) {
+	cfg := getCRAAuthConfig(clientInfo.Realm, clientInfo.Serializer, clientInfo.Authid,
+		clientInfo.Authrole, clientInfo.Secret, keepaliveInterval)
 
-	cfg := getCRAAuthConfig(realm, serializer, authid, authrole, secret, keepaliveInterval)
-
-	return connect(url, cfg)
+	return connect(clientInfo.Url, cfg)
 }
 
-func ConnectCryptoSign(url string, realm string, serializer serialize.Serialization, authid string, authrole string,
-	privateKey string, keepaliveInterval int) (*client.Client, error) {
-
-	cfg := getCryptosignAuthConfig(realm, serializer, authid, authrole, privateKey, keepaliveInterval)
-
-	return connect(url, cfg)
+func ConnectCryptoSign(clientInfo *ClientInfo, keepaliveInterval int) (*client.Client, error) {
+	cfg, err := getCryptosignAuthConfig(clientInfo.Realm, clientInfo.Serializer, clientInfo.Authid,
+		clientInfo.Authrole, clientInfo.PrivateKey, keepaliveInterval)
+	if err != nil {
+		return nil, err
+	}
+	return connect(clientInfo.Url, *cfg)
 }
 
 func Subscribe(session *client.Client, topic string, subscribeOptions map[string]string,
 	printDetails bool, logSubscribeTime bool, eventReceived chan struct{}) error {
 	eventHandler := func(event *wamp.Event) {
 		if printDetails {
-			argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
+			output, _ := argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
+			fmt.Println(output)
 		} else {
-			argsKWArgs(event.Arguments, event.ArgumentsKw, nil)
+			output, _ := argsKWArgs(event.Arguments, event.ArgumentsKw, nil)
+			fmt.Println(output)
 		}
 		if eventReceived != nil {
 			eventReceived <- struct{}{}
@@ -115,27 +119,15 @@ func Subscribe(session *client.Client, topic string, subscribeOptions map[string
 	return nil
 }
 
-func actualPublish(session *client.Client, topic string, args wamp.List, kwargs wamp.Dict, logPublishTime bool,
+func actualPublish(session *client.Client, topic string, args wamp.List, kwargs wamp.Dict,
 	delayPublish int, publishOptions wamp.Dict) error {
 	if delayPublish > 0 {
 		time.Sleep(time.Duration(delayPublish) * time.Millisecond)
 	}
 
-	var startTime int64
-	if logPublishTime {
-		startTime = time.Now().UnixMilli()
-	}
-
 	// Publish to topic.
 	if err := session.Publish(topic, publishOptions, args, kwargs); err != nil {
 		return err
-	}
-
-	if logPublishTime {
-		endTime := time.Now().UnixMilli()
-		log.Printf("Published to topic %s in %dms\n", topic, endTime-startTime)
-	} else {
-		log.Printf("Published to topic '%s'\n", topic)
 	}
 	return nil
 }
@@ -152,18 +144,17 @@ func Publish(session *client.Client, topic string, args []string, kwargs map[str
 	for i := 0; i < repeatPublish; i++ {
 		wp.Submit(func() {
 			err := actualPublish(session, topic, listToWampList(args), dictToWampDict(kwargs),
-				logPublishTime, delayPublish, dictToWampDict(publishOptions))
+				delayPublish, dictToWampDict(publishOptions))
 			resC <- err
 		})
 	}
 	wp.StopWait()
-
-	err := getErrorFromErrorChannel(resC)
-	if err != nil {
+	close(resC)
+	if err := getErrorFromErrorChannel(resC); err != nil {
 		return err
 	}
 
-	if logPublishTime && repeatPublish > 1 {
+	if logPublishTime {
 		endTime := time.Now().UnixMilli()
 		log.Printf("%d calls took %dms\n", repeatPublish, endTime-startTime)
 	}
@@ -202,21 +193,17 @@ func Register(session *client.Client, procedure string, command string, delay in
 }
 
 func actuallyCall(session *client.Client, procedure string, args wamp.List, kwargs wamp.Dict,
-	logCallTime bool, delayCall int, callOptions wamp.Dict) (*wamp.Result, error) {
+	delayCall int, callOptions wamp.Dict) (*wamp.Result, error) {
 	if delayCall > 0 {
 		time.Sleep(time.Duration(delayCall) * time.Millisecond)
-	}
-
-	var startTime int64
-	if logCallTime {
-		startTime = time.Now().UnixMilli()
 	}
 
 	var result *wamp.Result
 	var err error
 	if callOptions["receive_progress"] != nil && callOptions["receive_progress"] == true {
 		result, err = session.Call(context.Background(), procedure, callOptions, args, kwargs, func(progress *wamp.Result) {
-			progressArgsKWArgs(progress.Arguments, progress.ArgumentsKw)
+			output, _ := progressArgsKWArgs(progress.Arguments, progress.ArgumentsKw)
+			fmt.Println(output)
 		})
 	} else {
 		result, err = session.Call(context.Background(), procedure, callOptions, args, kwargs, nil)
@@ -224,17 +211,16 @@ func actuallyCall(session *client.Client, procedure string, args wamp.List, kwar
 	if err != nil {
 		return nil, err
 	} else if result != nil && len(result.Arguments) > 0 {
-		jsonString, err := json.MarshalIndent(result.Arguments, "", "    ")
-		if err != nil {
+		buffer := &bytes.Buffer{}
+		encoder := json.NewEncoder(buffer)
+		encoder.SetEscapeHTML(false)
+		encoder.SetIndent("", "    ")
+		if err = encoder.Encode(result.Arguments); err != nil {
 			return nil, err
 		}
-		fmt.Println(string(jsonString))
+		fmt.Println(string(buffer.Bytes()))
 	}
 
-	if logCallTime {
-		endTime := time.Now().UnixMilli()
-		log.Printf("call took %dms\n", endTime-startTime)
-	}
 	return result, nil
 }
 
@@ -251,18 +237,17 @@ func Call(session *client.Client, procedure string, args []string, kwargs map[st
 	for i := 0; i < repeatCount; i++ {
 		wp.Submit(func() {
 			_, err := actuallyCall(session, procedure, listToWampList(args), dictToWampDict(kwargs),
-				logCallTime, delayCall, dictToWampDict(callOptions))
+				delayCall, dictToWampDict(callOptions))
 			resC <- err
 		})
 	}
 	wp.StopWait()
-
-	err := getErrorFromErrorChannel(resC)
-	if err != nil {
+	close(resC)
+	if err := getErrorFromErrorChannel(resC); err != nil {
 		return err
 	}
 
-	if logCallTime && repeatCount > 1 {
+	if logCallTime {
 		endTime := time.Now().UnixMilli()
 		log.Printf("%d calls took %dms\n", repeatCount, endTime-startTime)
 	}
