@@ -5,21 +5,24 @@
 class Wick < Formula
   desc ""
   homepage "https://github.com/s-things/wick"
-  version "0.5.0"
+  version "0.6.0"
   license "MIT"
+
+  depends_on "git"
+  depends_on "go"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/s-things/wick/releases/download/v0.5.0/wick_0.5.0_macOS_arm64.tar.gz"
-      sha256 "7d31315be1bf534a30491671cc503eb8793d78eb277baf6e63a8011f9eafcf53"
+      url "https://github.com/s-things/wick/releases/download/v0.6.0/wick_0.6.0_macOS_arm64.tar.gz"
+      sha256 "14687bea4c2787b79650442e7c59d19c73111dfdbf259685e16fe4d5a19eced5"
 
       def install
         bin.install "wick"
       end
     end
     if Hardware::CPU.intel?
-      url "https://github.com/s-things/wick/releases/download/v0.5.0/wick_0.5.0_macOS_x86_64.tar.gz"
-      sha256 "03a9df668c5fa83256d536caae38590fed2cbc802e09af37664627b0d5e2959f"
+      url "https://github.com/s-things/wick/releases/download/v0.6.0/wick_0.6.0_macOS_x86_64.tar.gz"
+      sha256 "1e3d1fa51ab3ae682d394987facf9f4e222974ea2181c91d89035a02808fbf74"
 
       def install
         bin.install "wick"
@@ -29,15 +32,12 @@ class Wick < Formula
 
   on_linux do
     if Hardware::CPU.intel?
-      url "https://github.com/s-things/wick/releases/download/v0.5.0/wick_0.5.0_Linux_x86_64.tar.gz"
-      sha256 "cbadf956b7e62078005d2f6b366d6a0d8ee8fc5071dd51493a38ad8130254ad6"
+      url "https://github.com/s-things/wick/releases/download/v0.6.0/wick_0.6.0_Linux_x86_64.tar.gz"
+      sha256 "76feda376f1eef781f4773a79aafb7170b87842bef78c623113441a7e9493cee"
 
       def install
         bin.install "wick"
       end
     end
   end
-
-  depends_on "git"
-  depends_on "go"
 end
