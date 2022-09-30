@@ -64,8 +64,8 @@ var (
 	debug   = kingpin.Flag("debug", "Enable debug logging.").Bool()
 
 	join             = kingpin.Command("join-only", "Start wamp session.")
-	joinSessionCount = join.Flag("parallel", "Start requested number of wamp sessions.").Default("1").Int()
-	concurrentJoin   = join.Flag("concurrency", "Start wamp session concurrently. "+
+	joinSessionCount = join.Flag("parallel", "Join requested number of wamp sessions.").Default("1").Int()
+	concurrentJoin   = join.Flag("concurrency", "Join wamp session concurrently. "+
 		"Only effective when called with --parallel.").Default("1").Int()
 	logJoinTime   = join.Flag("time", "Log session join time").Bool()
 	keepaliveJoin = join.Flag("keepalive", "Interval between websocket pings.").Default("0").Int()
@@ -78,49 +78,50 @@ var (
 	logSubscribeTime      = subscribe.Flag("time", "Log time to join session and subscribe a topic.").Bool()
 	concurrentSubscribe   = subscribe.Flag("concurrency", "Subscribe to topic concurrently. "+
 		"Only effective when called with --parallel.").Default("1").Int()
-	subscribeSessionCount = subscribe.Flag("parallel", "Start requested number of wamp sessions.").Default("1").Int()
+	subscribeSessionCount = subscribe.Flag("parallel", "Join requested number of wamp sessions.").Default("1").Int()
 	keepaliveSubscribe    = subscribe.Flag("keepalive", "Interval between websocket pings.").Default("0").Int()
 
 	publish            = kingpin.Command("publish", "Publish to a topic.")
-	publishTopic       = publish.Arg("topic", "Topic to publish.").Required().String()
-	publishArgs        = publish.Arg("args", "Provide the arguments.").Strings()
-	publishKeywordArgs = publish.Flag("kwarg", "Provide the keyword arguments.").Short('k').StringMap()
-	publishOptions     = publish.Flag("option", "Publish option. (May be provided multiple times)").Short('o').StringMap()
+	publishTopic       = publish.Arg("topic", "Topic URI to publish on.").Required().String()
+	publishArgs        = publish.Arg("args", "Positional arguments for the publish.").Strings()
+	publishKeywordArgs = publish.Flag("kwarg", "Keyword argument for the publish (May be provided multiple times).").Short('k').StringMap()
+	publishOptions     = publish.Flag("option", "WAMP publish option (May be provided multiple times).").Short('o').StringMap()
 	repeatPublish      = publish.Flag("repeat", "Publish to the topic for the provided number of times.").Default("1").Int()
-	logPublishTime     = publish.Flag("time", "Log publish return time.").Bool()
-	delayPublish       = publish.Flag("delay", "Provide the delay in milliseconds.").Default("0").Int()
-	concurrentPublish  = publish.Flag("concurrency", "Publish to the topic concurrently. "+
+	logPublishTime     = publish.Flag("time", "Log time it took to publish the message. Will only print sane numbers if used with "+
+		"WAMP acknowledge=true").Bool()
+	delayPublish      = publish.Flag("delay", "Delay (in milliseconds) between subsequent publishes").Default("0").Int()
+	concurrentPublish = publish.Flag("concurrency", "Publish to the topic concurrently. "+
 		"Only effective when called with --repeat and/or --parallel.").Default("1").Int()
-	publishSessionCount = publish.Flag("parallel", "Start requested number of wamp sessions").Default("1").Int()
+	publishSessionCount = publish.Flag("parallel", "Join requested number of wamp sessions").Default("1").Int()
 	keepalivePublish    = publish.Flag("keepalive", "Interval between websocket pings.").Default("0").Int()
 
 	register           = kingpin.Command("register", "Register a procedure.")
-	registerProcedure  = register.Arg("procedure", "Procedure name.").Required().String()
+	registerProcedure  = register.Arg("procedure", "Procedure URI.").Required().String()
 	onInvocationCmd    = register.Arg("command", "Shell command to run and return it's output.").String()
-	delay              = register.Flag("delay", "Register procedure after delay.(in milliseconds)").Int()
-	invokeCount        = register.Flag("invoke-count", "Leave session after it's called requested times.").Int()
-	registerOptions    = register.Flag("option", "Procedure registration option. (May be provided multiple times)").Short('o').StringMap()
-	logRegisterTime    = register.Flag("time", "Log time to join session and register procedure.").Bool()
-	concurrentRegister = register.Flag("concurrency", "Register procedure concurrently. "+
+	delay              = register.Flag("delay", "Register the procedure after delay (in milliseconds).").Int()
+	invokeCount        = register.Flag("invoke-count", "Leave session after the procedure is invoked the allowed number of times.").Int()
+	registerOptions    = register.Flag("option", "WAMP procedure registration option (May be provided multiple times).").Short('o').StringMap()
+	logRegisterTime    = register.Flag("time", "Log time to join a session and registration of the procedure.").Bool()
+	concurrentRegister = register.Flag("concurrency", "Register procedures concurrently. "+
 		"Only effective when called with --parallel.").Default("1").Int()
-	registerSessionCount = register.Flag("parallel", "Start requested number of wamp sessions.").Default("1").Int()
+	registerSessionCount = register.Flag("parallel", "Join requested number of wamp sessions.").Default("1").Int()
 	keepaliveRegister    = register.Flag("keepalive", "Interval between websocket pings.").Default("0").Int()
 
 	call            = kingpin.Command("call", "Call a procedure.")
 	callProcedure   = call.Arg("procedure", "Procedure to call.").Required().String()
-	callArgs        = call.Arg("args", "Provide the arguments.").Strings()
-	callKeywordArgs = call.Flag("kwarg", "Provide the keyword arguments.").Short('k').StringMap()
-	logCallTime     = call.Flag("time", "Log call return time.").Bool()
-	repeatCount     = call.Flag("repeat", "Call the procedure for the provided number of times.").Default("1").Int()
-	delayCall       = call.Flag("delay", "Provide the delay in milliseconds.").Default("0").Int()
-	callOptions     = call.Flag("option", "Procedure call option. (May be provided multiple times)").Short('o').StringMap()
-	concurrentCalls = call.Flag("concurrency", "Make concurrent calls without waiting for the result for each to return. "+
+	callArgs        = call.Arg("args", "Positional arguments for the call.").Strings()
+	callKeywordArgs = call.Flag("kwarg", "Keyword argument for the call (May be provided multiple times).").Short('k').StringMap()
+	logCallTime     = call.Flag("time", "Log call return time (in milliseconds).").Bool()
+	repeatCount     = call.Flag("repeat", "Repeatedly call the procedure for the requested number of times.").Default("1").Int()
+	delayCall       = call.Flag("delay", "Delay (in milliseconds) between first and subsequent calls.").Default("0").Int()
+	callOptions     = call.Flag("option", "WAMP call option (May be provided multiple times).").Short('o').StringMap()
+	concurrentCalls = call.Flag("concurrency", "Make concurrent calls without waiting for the result of each to return. "+
 		"Only effective when called with --repeat and/or --parallel.").Default("1").Int()
-	callSessionCount = call.Flag("parallel", "Start requested number of wamp sessions.").Default("1").Int()
+	callSessionCount = call.Flag("parallel", "Join requested number of wamp sessions.").Default("1").Int()
 	keepaliveCall    = call.Flag("keepalive", "Interval between websocket pings.").Default("0").Int()
 
-	keyGen     = kingpin.Command("keygen", "Generate ed25519 keypair.").Hidden()
-	saveToFile = keyGen.Flag("output-file", "Write keys to file.").Short('o').Hidden().Bool()
+	keyGen     = kingpin.Command("keygen", "Generate a WAMP cryptosign ed25519 keypair.")
+	saveToFile = keyGen.Flag("output-file", "Write keypair to file.").Short('O').Bool()
 )
 
 const versionString = "0.6.0"
