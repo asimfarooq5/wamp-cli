@@ -1,6 +1,6 @@
 name: wick
 base: core20
-version: '0.5.0'
+version: '0.6.0'
 compression: lzo
 summary: WAMP In command-line
 description: WAMP In command-line

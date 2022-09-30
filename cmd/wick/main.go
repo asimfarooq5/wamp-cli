@@ -123,7 +123,7 @@ var (
 	saveToFile = keyGen.Flag("output-file", "Write keys to file.").Short('o').Hidden().Bool()
 )
 
-const versionString = "0.5.0"
+const versionString = "0.6.0"
 
 func main() {
 	kingpin.Version(versionString).VersionFlag.Short('v')

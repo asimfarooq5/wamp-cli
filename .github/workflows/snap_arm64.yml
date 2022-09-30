@@ -18,7 +18,7 @@ jobs:
 
       - name: build snap
         run: |
-          snapcraft clean --use-lxd wick
+          snapcraft clean --use-lxd
           snapcraft --use-lxd
 
       - name: copy build artifacts
