@@ -48,9 +48,10 @@ func connect(url string, cfg client.Config) (*client.Client, error) {
 		log.Debugf("attached session '%v' to realm '%s' (authid='%s', authrole='%s', authmethod='%s', authprovider='%s')",
 			session.ID(), cfg.Realm, session.RealmDetails()["authid"], session.RealmDetails()["authrole"],
 			session.RealmDetails()["authmethod"], session.RealmDetails()["authprovider"])
-		brokerFeatures := buildStringFromMap(session.RealmDetails()["roles"].(map[string]interface{})["broker"].(map[string]interface{})["features"].(map[string]interface{}))
-		dealerFeatures := buildStringFromMap(session.RealmDetails()["roles"].(map[string]interface{})["dealer"].(map[string]interface{})["features"].(map[string]interface{}))
-		log.Debugf("broker features(%s), dealer features(%s)", brokerFeatures, dealerFeatures)
+		// XXX: this is broken with some environments, bring back once that's fixed.
+		//brokerFeatures := buildStringFromMap(session.RealmDetails()["roles"].(map[string]interface{})["broker"].(map[string]interface{})["features"].(map[string]interface{}))
+		//dealerFeatures := buildStringFromMap(session.RealmDetails()["roles"].(map[string]interface{})["dealer"].(map[string]interface{})["features"].(map[string]interface{}))
+		//log.Debugf("broker features(%s), dealer features(%s)", brokerFeatures, dealerFeatures)
 	}
 
 	return session, nil
