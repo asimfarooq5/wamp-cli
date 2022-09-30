@@ -80,20 +80,24 @@ func readFromProfile(profile string) (*core.ClientInfo, error) {
 	clientInfo := &core.ClientInfo{}
 	cfg, err := ini.Load(os.ExpandEnv("$HOME/.wick/config"))
 	if err != nil {
-		return nil, fmt.Errorf("fail to read config: %v", err)
+		return nil, fmt.Errorf("failed to read config: %v", err)
 	}
 
 	section, err := cfg.GetSection(profile)
 	if err != nil {
-		return nil, fmt.Errorf("error in getting section: %s", err)
+		return nil, fmt.Errorf("unable to read profile: %s", err)
 	}
 
+	// FIXME: validate url is not empty and no need to fill it with
+	//  a default
 	clientInfo.Url = section.Key("url").Validate(func(s string) string {
 		if len(s) == 0 {
 			return "ws://localhost:8080/ws"
 		}
 		return s
 	})
+
+	// FIXME: validate realm is non empty and is a URI (no space at least)
 	clientInfo.Realm = section.Key("realm").Validate(func(s string) string {
 		if len(s) == 0 {
 			return "realm1"
@@ -111,14 +115,19 @@ func readFromProfile(profile string) (*core.ClientInfo, error) {
 		return nil, fmt.Errorf("serailizer must be json, msgpack or cbor")
 	}
 
+	// FIXME: validate not empty
 	clientInfo.Authid = section.Key("authid").String()
 	clientInfo.Authrole = section.Key("authrole").String()
+	// FIXME: validate authmethod is not of invalid type
 	clientInfo.AuthMethod = section.Key("authmethod").String()
 	if clientInfo.AuthMethod == "cryptosign" {
+		// Validate private key not empty and is valid length
 		clientInfo.PrivateKey = section.Key("private-key").String()
 	} else if clientInfo.AuthMethod == "ticket" {
+		// validate ticket not empty
 		clientInfo.Ticket = section.Key("ticket").String()
 	} else if clientInfo.AuthMethod == "wampcra" {
+		// validate not empty
 		clientInfo.Secret = section.Key("secret").String()
 	}
 
