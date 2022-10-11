@@ -49,8 +49,10 @@ func connect(url string, cfg client.Config) (*client.Client, error) {
 			session.ID(), cfg.Realm, session.RealmDetails()["authid"], session.RealmDetails()["authrole"],
 			session.RealmDetails()["authmethod"], session.RealmDetails()["authprovider"])
 		// XXX: this is broken with some environments, bring back once that's fixed.
-		//brokerFeatures := buildStringFromMap(session.RealmDetails()["roles"].(map[string]interface{})["broker"].(map[string]interface{})["features"].(map[string]interface{}))
-		//dealerFeatures := buildStringFromMap(session.RealmDetails()["roles"].(map[string]interface{})["dealer"].(map[string]interface{})["features"].(map[string]interface{}))
+		//brokerFeatures := buildStringFromMap(session.RealmDetails()["roles"].(map[string]interface{})["broker"]
+		//	.(map[string]interface{})["features"].(map[string]interface{}))
+		//dealerFeatures := buildStringFromMap(session.RealmDetails()["roles"].(map[string]interface{})["dealer"]
+		//	.(map[string]interface{})["features"].(map[string]interface{}))
 		//log.Debugf("broker features(%s), dealer features(%s)", brokerFeatures, dealerFeatures)
 	}
 
@@ -219,7 +221,7 @@ func actuallyCall(session *client.Client, procedure string, args wamp.List, kwar
 		if err = encoder.Encode(result.Arguments); err != nil {
 			return nil, err
 		}
-		fmt.Println(string(buffer.Bytes()))
+		fmt.Println(buffer.String())
 	}
 
 	return result, nil

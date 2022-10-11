@@ -175,7 +175,7 @@ func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) (string, er
 	}
 
 	if len(args) == 0 && len(kwArgs) == 0 && details == nil {
-		outputString = fmt.Sprintf("args: []\nkwargs: {}")
+		outputString = "args: []\nkwargs: {}"
 	}
 	return outputString, nil
 }
@@ -199,7 +199,7 @@ func progressArgsKWArgs(args wamp.List, kwArgs wamp.Dict) (string, error) {
 	}
 
 	if len(args) == 0 && len(kwArgs) == 0 {
-		outputString = fmt.Sprintf("args: [] kwargs: {}")
+		outputString = "args: [] kwargs: {}"
 	}
 
 	outputString = fmt.Sprintf("%s\n", outputString)
@@ -210,8 +210,8 @@ func progressArgsKWArgs(args wamp.List, kwArgs wamp.Dict) (string, error) {
 func shellOut(command string) (string, string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	var cmd *exec.Cmd
-	cmd = exec.Command("sh", "-c", command)
+
+	cmd := exec.Command("sh", "-c", command)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()

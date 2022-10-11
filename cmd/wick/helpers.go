@@ -80,12 +80,12 @@ func readFromProfile(profile string) (*core.ClientInfo, error) {
 	clientInfo := &core.ClientInfo{}
 	cfg, err := ini.Load(os.ExpandEnv("$HOME/.wick/config"))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config: %v", err)
+		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
 	section, err := cfg.GetSection(profile)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read profile: %s", err)
+		return nil, fmt.Errorf("unable to read profile: %w", err)
 	}
 
 	// FIXME: validate url is not empty and no need to fill it with
