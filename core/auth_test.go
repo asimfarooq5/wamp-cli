@@ -36,7 +36,7 @@ import (
 	"github.com/s-things/wick/core"
 )
 
-var (
+const (
 	realm             = "realm1"
 	serializer        = serialize.JSON
 	authId            = "john"
@@ -104,7 +104,8 @@ func TestHandleCryptosign(t *testing.T) {
 	callable := core.HandleCryptosign(pvk)
 
 	challengeHex := "a1d483092ec08960fedbaed2bc1d411568a59077b794210e251bd3abb1563f7c"
-	signedHex := "906b90ae9b8ebb76c0005e2092ea3c77e3d832d841909c18dd25a9d8c87681337a6fd9938c38f7c77216cd5915e7396e942ed4de2eee71d4068f4cc12cb6a40a"
+	signedHex := "906b90ae9b8ebb76c0005e2092ea3c77e3d832d841909c18dd25a9d8c87681337a6fd9938c38f7c77216cd5915e7" +
+		"396e942ed4de2eee71d4068f4cc12cb6a40a"
 
 	fakeChallenge := wamp.Challenge{Extra: map[string]interface{}{"challenge": challengeHex}}
 

@@ -109,12 +109,12 @@ linters:
     - errorlint
     - execinquery
     - exportloopref
-    #- gci              # Commented out for now as there are too much globals here %)
-    #- gochecknoglobals # Commented out for now as there are too much globals here %)
+    - gci
+    - gochecknoglobals
     - goconst
     - godot
     - gofmt
-    #- gomnd
+    - gomnd
     - gosec
     - nakedret
     - nilerr

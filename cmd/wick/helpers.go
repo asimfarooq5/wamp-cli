@@ -38,6 +38,13 @@ import (
 	"github.com/s-things/wick/core"
 )
 
+const (
+	cryptosignAuth = "cryptosign"
+	ticketAuth     = "ticket"
+	wampCraAuth    = "wampcra"
+	anonymousAuth  = "anonymous"
+)
+
 func getSerializerByName(name string) serialize.Serialization {
 	switch name {
 	case "json":
@@ -52,14 +59,14 @@ func getSerializerByName(name string) serialize.Serialization {
 
 func selectAuthMethod(privateKey string, ticket string, secret string) string {
 	if privateKey != "" && (ticket == "" && secret == "") {
-		return "cryptosign"
+		return cryptosignAuth
 	} else if ticket != "" && (privateKey == "" && secret == "") {
-		return "ticket"
+		return ticketAuth
 	} else if secret != "" && (privateKey == "" && ticket == "") {
-		return "wampcra"
+		return wampCraAuth
 	}
 
-	return "anonymous"
+	return anonymousAuth
 }
 
 func validateData(sessionCount int, concurrency int, keepAlive int) error {
@@ -120,13 +127,13 @@ func readFromProfile(profile string) (*core.ClientInfo, error) {
 	clientInfo.Authrole = section.Key("authrole").String()
 	// FIXME: validate authmethod is not of invalid type
 	clientInfo.AuthMethod = section.Key("authmethod").String()
-	if clientInfo.AuthMethod == "cryptosign" {
+	if clientInfo.AuthMethod == cryptosignAuth {
 		// Validate private key not empty and is valid length
 		clientInfo.PrivateKey = section.Key("private-key").String()
-	} else if clientInfo.AuthMethod == "ticket" {
+	} else if clientInfo.AuthMethod == ticketAuth {
 		// validate ticket not empty
 		clientInfo.Ticket = section.Key("ticket").String()
-	} else if clientInfo.AuthMethod == "wampcra" {
+	} else if clientInfo.AuthMethod == wampCraAuth {
 		// validate not empty
 		clientInfo.Secret = section.Key("secret").String()
 	}
@@ -152,7 +159,7 @@ func connect(clientInfo *core.ClientInfo, keepalive int) (*client.Client, error)
 	var err error
 
 	switch clientInfo.AuthMethod {
-	case "anonymous":
+	case anonymousAuth:
 		if clientInfo.PrivateKey != "" {
 			return nil, fmt.Errorf("private key not needed for anonymous auth")
 		}
@@ -163,17 +170,17 @@ func connect(clientInfo *core.ClientInfo, keepalive int) (*client.Client, error)
 			return nil, fmt.Errorf("secret not needed for anonymous auth")
 		}
 		session, err = core.ConnectAnonymous(clientInfo, keepalive)
-	case "ticket":
+	case ticketAuth:
 		if clientInfo.Ticket == "" {
 			return nil, fmt.Errorf("must provide ticket when authMethod is ticket")
 		}
 		session, err = core.ConnectTicket(clientInfo, keepalive)
-	case "wampcra":
+	case wampCraAuth:
 		if clientInfo.Secret == "" {
 			return nil, fmt.Errorf("must provide secret when authMethod is wampcra")
 		}
 		session, err = core.ConnectCRA(clientInfo, keepalive)
-	case "cryptosign":
+	case cryptosignAuth:
 		if clientInfo.PrivateKey == "" {
 			return nil, fmt.Errorf("must provide private key when authMethod is cryptosign")
 		}

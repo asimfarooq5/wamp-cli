@@ -135,8 +135,9 @@ func actualPublish(session *client.Client, topic string, args wamp.List, kwargs 
 	return nil
 }
 
-func Publish(session *client.Client, topic string, args []string, kwargs map[string]string, publishOptions map[string]string,
-	logPublishTime bool, repeatPublish int, delayPublish int, concurrency int) error {
+func Publish(session *client.Client, topic string, args []string, kwargs map[string]string,
+	publishOptions map[string]string, logPublishTime bool, repeatPublish int, delayPublish int,
+	concurrency int) error {
 	var startTime int64
 	if logPublishTime {
 		startTime = time.Now().UnixMilli()

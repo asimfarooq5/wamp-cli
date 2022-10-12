@@ -43,13 +43,8 @@ import (
 	"github.com/s-things/wick/core"
 )
 
-var (
-	testRealm      = "wick.test"
-	testClientInfo = &core.ClientInfo{
-		Realm:      testRealm,
-		Serializer: serialize.JSON,
-		AuthMethod: "anonymous",
-	}
+const (
+	testRealm       = "wick.test"
 	sessionCount    = 1000
 	testConcurrency = 100
 )
@@ -84,7 +79,12 @@ func startWsServer(t *testing.T) string {
 
 func TestSessions(t *testing.T) {
 	wsURL := startWsServer(t)
-	testClientInfo.Url = wsURL
+	testClientInfo := &core.ClientInfo{
+		Realm:      testRealm,
+		Serializer: serialize.JSON,
+		AuthMethod: "anonymous",
+		Url:        wsURL,
+	}
 	t.Run("TestConnect", func(t *testing.T) {
 		session, err := main.Connect(testClientInfo, 1)
 		require.NoError(t, err)

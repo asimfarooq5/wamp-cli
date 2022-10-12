@@ -45,7 +45,7 @@ const (
 	testProcedure = "wick.test.procedure"
 	testTopic     = "wick.test.topic"
 	repeatCount   = 1000
-	repeatPublish = 10000
+	repeatPublish = 1000
 	delay         = 1000
 )
 

@@ -54,6 +54,11 @@ type ClientInfo struct {
 	Secret     string
 }
 
+const (
+	sixtyFourInt = 64
+	thirtyTwoInt = 32
+)
+
 func listToWampList(args []string) wamp.List {
 	var arguments wamp.List
 
@@ -62,25 +67,31 @@ func listToWampList(args []string) wamp.List {
 	}
 
 	for _, value := range args {
-
 		var mapJson map[string]interface{}
 		var mapList []map[string]interface{}
 		var simpleList []interface{}
 
-		if number, errNumber := strconv.Atoi(value); errNumber == nil {
-			arguments = append(arguments, number)
-		} else if float, errFloat := strconv.ParseFloat(value, 64); errFloat == nil {
-			arguments = append(arguments, float)
-		} else if boolean, errBoolean := strconv.ParseBool(value); errBoolean == nil {
-			arguments = append(arguments, boolean)
-		} else if errJson := json.Unmarshal([]byte(value), &mapJson); errJson == nil {
-			arguments = append(arguments, mapJson)
-		} else if errMapList := json.Unmarshal([]byte(value), &mapList); errMapList == nil {
-			arguments = append(arguments, mapList)
-		} else if errList := json.Unmarshal([]byte(value), &simpleList); errList == nil {
-			arguments = append(arguments, simpleList)
-		} else {
-			arguments = append(arguments, value)
+		switch {
+		case strings.HasPrefix(value, `'`) && strings.HasSuffix(value, `'`):
+			arguments = append(arguments, value[1:len(value)-1])
+		case strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`):
+			arguments = append(arguments, value[1:len(value)-1])
+		default:
+			if number, errNumber := strconv.Atoi(value); errNumber == nil {
+				arguments = append(arguments, number)
+			} else if float, errFloat := strconv.ParseFloat(value, sixtyFourInt); errFloat == nil {
+				arguments = append(arguments, float)
+			} else if boolean, errBoolean := strconv.ParseBool(value); errBoolean == nil {
+				arguments = append(arguments, boolean)
+			} else if errJson := json.Unmarshal([]byte(value), &mapJson); errJson == nil {
+				arguments = append(arguments, mapJson)
+			} else if errMapList := json.Unmarshal([]byte(value), &mapList); errMapList == nil {
+				arguments = append(arguments, mapList)
+			} else if errList := json.Unmarshal([]byte(value), &simpleList); errList == nil {
+				arguments = append(arguments, simpleList)
+			} else {
+				arguments = append(arguments, value)
+			}
 		}
 	}
 
@@ -91,25 +102,31 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 	var keywordArguments wamp.Dict = make(map[string]interface{})
 
 	for key, value := range kwargs {
-
 		var mapJson map[string]interface{}
 		var mapList []map[string]interface{}
 		var simpleList []interface{}
 
-		if number, errNumber := strconv.Atoi(value); errNumber == nil {
-			keywordArguments[key] = number
-		} else if float, errFloat := strconv.ParseFloat(value, 64); errFloat == nil {
-			keywordArguments[key] = float
-		} else if boolean, errBoolean := strconv.ParseBool(value); errBoolean == nil {
-			keywordArguments[key] = boolean
-		} else if errJson := json.Unmarshal([]byte(value), &mapJson); errJson == nil {
-			keywordArguments[key] = mapJson
-		} else if errMapList := json.Unmarshal([]byte(value), &mapList); errMapList == nil {
-			keywordArguments[key] = mapList
-		} else if errList := json.Unmarshal([]byte(value), &simpleList); errList == nil {
-			keywordArguments[key] = simpleList
-		} else {
-			keywordArguments[key] = value
+		switch {
+		case strings.HasPrefix(value, `'`) && strings.HasSuffix(value, `'`):
+			keywordArguments[key] = value[1 : len(value)-1]
+		case strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`):
+			keywordArguments[key] = value[1 : len(value)-1]
+		default:
+			if number, errNumber := strconv.Atoi(value); errNumber == nil {
+				keywordArguments[key] = number
+			} else if float, errFloat := strconv.ParseFloat(value, sixtyFourInt); errFloat == nil {
+				keywordArguments[key] = float
+			} else if boolean, errBoolean := strconv.ParseBool(value); errBoolean == nil {
+				keywordArguments[key] = boolean
+			} else if errJson := json.Unmarshal([]byte(value), &mapJson); errJson == nil {
+				keywordArguments[key] = mapJson
+			} else if errMapList := json.Unmarshal([]byte(value), &mapList); errMapList == nil {
+				keywordArguments[key] = mapList
+			} else if errList := json.Unmarshal([]byte(value), &simpleList); errList == nil {
+				keywordArguments[key] = simpleList
+			} else {
+				keywordArguments[key] = value
+			}
 		}
 	}
 	return keywordArguments
@@ -136,10 +153,10 @@ func registerInvocationHandler(session *client.Client, procedure string, command
 		if hasMaxInvokeCount {
 			invokeCount--
 			if invokeCount == 0 {
-				session.Unregister(procedure)
+				_ = session.Unregister(procedure)
 				time.AfterFunc(1*time.Second, func() {
 					log.Println("session closing")
-					session.Close()
+					_ = session.Close()
 				})
 			}
 		}
@@ -150,20 +167,20 @@ func registerInvocationHandler(session *client.Client, procedure string, command
 }
 
 func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) (string, error) {
-	var outputString string
+	var builder strings.Builder
 	if details != nil {
 		jsonString, err := json.MarshalIndent(details, "", "    ")
 		if err != nil {
 			return "", err
 		}
-		outputString = fmt.Sprintf("details:%s\n", jsonString)
+		fmt.Fprintf(&builder, "details:%s\n", jsonString)
 	}
 	if len(args) != 0 {
 		jsonString, err := json.MarshalIndent(args, "", "    ")
 		if err != nil {
 			return "", err
 		}
-		outputString = fmt.Sprintf("%sargs:\n%s", outputString, jsonString)
+		fmt.Fprintf(&builder, "args:\n%s", jsonString)
 	}
 
 	if len(kwArgs) != 0 {
@@ -171,23 +188,23 @@ func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) (string, er
 		if err != nil {
 			return "", err
 		}
-		outputString = fmt.Sprintf("%skwargs:\n%s", outputString, jsonString)
+		fmt.Fprintf(&builder, "kwargs:\n%s", jsonString)
 	}
 
 	if len(args) == 0 && len(kwArgs) == 0 && details == nil {
-		outputString = "args: []\nkwargs: {}"
+		fmt.Fprintf(&builder, "args: []\nkwargs: {}")
 	}
-	return outputString, nil
+	return builder.String(), nil
 }
 
 func progressArgsKWArgs(args wamp.List, kwArgs wamp.Dict) (string, error) {
-	var outputString string
+	var builder strings.Builder
 	if len(args) != 0 {
 		jsonString, err := json.Marshal(args)
 		if err != nil {
 			return "", err
 		}
-		outputString = fmt.Sprintf("args: %s  ", jsonString)
+		fmt.Fprintf(&builder, "args: %s", jsonString)
 	}
 
 	if len(kwArgs) != 0 {
@@ -195,16 +212,14 @@ func progressArgsKWArgs(args wamp.List, kwArgs wamp.Dict) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		outputString = fmt.Sprintf("%skwargs: %s", outputString, bs)
+		fmt.Fprintf(&builder, "kwargs: %s", bs)
 	}
 
 	if len(args) == 0 && len(kwArgs) == 0 {
-		outputString = "args: [] kwargs: {}"
+		fmt.Fprintf(&builder, "args: [] kwargs: {}")
 	}
 
-	outputString = fmt.Sprintf("%s\n", outputString)
-
-	return outputString, nil
+	return builder.String(), nil
 }
 
 func shellOut(command string) (string, string, error) {
@@ -218,14 +233,6 @@ func shellOut(command string) (string, string, error) {
 	return stdout.String(), stderr.String(), err
 }
 
-func buildStringFromMap(brokerFeatures map[string]interface{}) string {
-	var builder strings.Builder
-	for key, value := range brokerFeatures {
-		fmt.Fprintf(&builder, "%s=%v, ", key, value)
-	}
-	return strings.TrimRight(builder.String(), ", ")
-}
-
 func getKeyPair(privateKeyKex string) (ed25519.PublicKey, ed25519.PrivateKey, error) {
 	privateKeyRaw, err := hex.DecodeString(privateKeyKex)
 	if err != nil {
@@ -233,9 +240,9 @@ func getKeyPair(privateKeyKex string) (ed25519.PublicKey, ed25519.PrivateKey, er
 	}
 	var privateKey ed25519.PrivateKey
 
-	if len(privateKeyRaw) == 32 {
+	if len(privateKeyRaw) == thirtyTwoInt {
 		privateKey = ed25519.NewKeyFromSeed(privateKeyRaw)
-	} else if len(privateKeyRaw) == 64 {
+	} else if len(privateKeyRaw) == sixtyFourInt {
 		privateKey = ed25519.NewKeyFromSeed(privateKeyRaw[:32])
 	} else {
 		return nil, nil,

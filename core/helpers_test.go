@@ -77,7 +77,8 @@ func TestArgsKWArgs(t *testing.T) {
     "key2": 1,
     "key3": false
 }`},
-		{wamp.List{"test", 1, true, "1.0"}, wamp.Dict{"key": "value", "key2": 1, "key3": false}, wamp.Dict{"details": "wamp details"}, `details:{
+		{wamp.List{"test", 1, true, "1.0"}, wamp.Dict{"key": "value", "key2": 1, "key3": false},
+			wamp.Dict{"details": "wamp details"}, `details:{
     "details": "wamp details"
 }
 args:
@@ -114,20 +115,16 @@ func TestProgressArgsKWArgs(t *testing.T) {
 		{
 			wamp.List{"test", 1, true, "1.0"},
 			wamp.Dict{},
-			`args: ["test",1,true,"1.0"]  
-`},
+			`args: ["test",1,true,"1.0"]`},
 		{
 			wamp.List{},
 			wamp.Dict{"key": "value", "key2": 1, "key3": false},
-			`kwargs: {"key":"value","key2":1,"key3":false}
-`},
+			`kwargs: {"key":"value","key2":1,"key3":false}`},
 		{
 			wamp.List{"test", 1, true, "1.0"},
 			wamp.Dict{"key": "value", "key2": 1, "key3": false},
-			`args: ["test",1,true,"1.0"]  kwargs: {"key":"value","key2":1,"key3":false}
-`},
-		{wamp.List{}, wamp.Dict{}, `args: [] kwargs: {}
-`},
+			`args: ["test",1,true,"1.0"]kwargs: {"key":"value","key2":1,"key3":false}`},
+		{wamp.List{}, wamp.Dict{}, `args: [] kwargs: {}`},
 	} {
 		outputString, err := core.ProgressArgsKWArgs(data.args, data.kwargs)
 		require.NoError(t, err)
@@ -149,71 +146,53 @@ func TestUrlSanitization(t *testing.T) {
 }
 
 func TestListToWampList(t *testing.T) {
-	inputList := []string{"string", "1", "1.1", "true", `["group_1","group_2", 1, true]`,
-		`{"firstKey":"value", "secondKey":2}`,
-		`[{"firstKey":"value", "secondKey":2}, {"firstKey":"value", "secondKey":2}]`}
+	inputList := []string{
+		"string", "1", "1.1", "true",
+		`"123"`, `'123'`, `"true"`,
+		// JSON array, object, array of objects
+		`["group_1","group_2", 1.1, true]`,
+		`{"firstKey":"value", "secondKey":2.1}`,
+		`[{"firstKey":"value", "secondKey":2.1}, {"firstKey":"value", "secondKey":2.1}]`,
+	}
+
+	expectedList := wamp.List{
+		"string", 1, 1.1, true,
+		"123", "123", "true",
+		// converted from JSON
+		[]interface{}{"group_1", "group_2", 1.1, true},
+		map[string]interface{}{"firstKey": "value", "secondKey": 2.1},
+		[]map[string]interface{}{
+			{"firstKey": "value", "secondKey": 2.1},
+			{"firstKey": "value", "secondKey": 2.1},
+		},
+	}
 
 	wampList := core.ListToWampList(inputList)
-
-	if len(wampList) != len(inputList) {
-		t.Error("error in list conversion")
-	}
-
-	if _, canConvert := wampList[1].(int); canConvert == false {
-		t.Error("error in list conversion")
-	}
-
-	if _, canConvert := wampList[2].(float64); canConvert == false {
-		t.Error("error in list conversion")
-	}
-
-	if _, canConvert := wampList[3].(bool); canConvert == false {
-		t.Error("error in list conversion")
-	}
-
-	if _, canConvert := wampList[4].([]interface{}); canConvert == false {
-		t.Error("error in list conversion")
-	}
-
-	if _, canConvert := wampList[5].(map[string]interface{}); canConvert == false {
-		t.Error("error in list conversion")
-	}
-
-	if _, canConvert := wampList[6].([]map[string]interface{}); canConvert == false {
-		t.Error("error in list conversion")
-	}
+	assert.Equal(t, expectedList, wampList, "error in list conversion")
 }
 
 func TestDictToWampDict(t *testing.T) {
-	inputDict := map[string]string{"string": "string", "int": "1", "float": "1.1", "bool": "true",
-		"list": `["group_1","group_2", 1, true]`, "json": `{"firstKey":"value", "secondKey":2}`,
-		"jsonList": `[{"firstKey":"value", "secondKey":2}, {"firstKey":"value", "secondKey":2}]`}
+	inputDict := map[string]string{
+		"string": "string", "int": "1", "float": "1.1", "bool": "true",
+		"stringNumber": `""123"`, "stringFloat": `'1.23'`, "stringBool": `"true"`,
+		"list":     `["group_1","group_2", 1.1, true]`,
+		"json":     `{"firstKey":"value", "secondKey":2.2}`,
+		"jsonList": `[{"firstKey":"value", "secondKey":2.2}, {"firstKey":"value", "secondKey":2.2}]`,
+	}
+
+	expectedDict := wamp.Dict{
+		"string": "string", "int": 1, "float": 1.1, "bool": true,
+		"stringNumber": `"123`, "stringFloat": "1.23", "stringBool": "true",
+		"list": []interface{}{
+			"group_1", "group_2", 1.1, true,
+		},
+		"json": map[string]interface{}{"firstKey": "value", "secondKey": 2.2},
+		"jsonList": []map[string]interface{}{
+			{"firstKey": "value", "secondKey": 2.2},
+			{"firstKey": "value", "secondKey": 2.2},
+		},
+	}
+
 	wampDict := core.DictToWampDict(inputDict)
-	if len(inputDict) != len(wampDict) {
-		t.Error("error in map conversion")
-	}
-
-	if _, canConvert := wampDict["int"].(int); canConvert == false {
-		t.Error("error in map conversion")
-	}
-
-	if _, canConvert := wampDict["float"].(float64); canConvert == false {
-		t.Error("error in map conversion")
-	}
-
-	if _, canConvert := wampDict["bool"].(bool); canConvert == false {
-		t.Error("error in map conversion")
-	}
-
-	if _, canConvert := wampDict["list"].([]interface{}); canConvert == false {
-		t.Error("error in map conversion")
-	}
-
-	if _, canConvert := wampDict["json"].(map[string]interface{}); canConvert == false {
-		t.Error("error in map conversion")
-	}
-
-	if _, canConvert := wampDict["jsonList"].([]map[string]interface{}); canConvert == false {
-		t.Error("error in dict conversion")
-	}
+	assert.Equal(t, expectedDict, wampDict, "error in dict conversion")
 }
