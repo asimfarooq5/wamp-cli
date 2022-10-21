@@ -107,6 +107,8 @@ type cmd struct {
 
 	keyGen     *kingpin.CmdClause
 	saveToFile *bool
+
+	configure *kingpin.CmdClause
 }
 
 func parseCmd() (*cmd, string) {
@@ -224,6 +226,8 @@ a string, send value in quotes e.g."'1'" or '"true"'. (May be provided multiple 
 
 		keyGen:     keyGenCommand,
 		saveToFile: keyGenCommand.Flag("output-file", "Write keypair to file.").Short('O').Bool(),
+
+		configure: kingpin.Command("configure", "Configure profiles."),
 	}
 	return c, kingpin.Parse()
 }
@@ -253,8 +257,9 @@ func main() {
 
 	var clientInfo *core.ClientInfo
 	var err error
-	if *c.profile != "" {
-		clientInfo, err = readFromProfile(*c.profile)
+	var filePath = os.ExpandEnv("$HOME/.wick/config")
+	if *c.profile != "" && selectedCommand != c.configure.FullCommand() {
+		clientInfo, err = readFromProfile(*c.profile, filePath)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -572,6 +577,28 @@ func main() {
 			}
 		} else {
 			fmt.Printf("Public Key: %s\nPrivate Key: %s\n", publicString, privateString)
+		}
+
+	case c.configure.FullCommand():
+		if *c.profile == "" {
+			profile, err := askForInput(os.Stdin, os.Stdout, &inputOptions{
+				Query:        "Enter profile name",
+				DefaultVal:   "profile1",
+				Required:     true,
+				Loop:         true,
+				ValidateFunc: nil,
+			})
+			if err != nil {
+				log.Fatalln(err)
+			}
+			*c.profile = profile
+		}
+		clientInfo, *c.serializer, err = getInputFromUser(*c.serializer, clientInfo)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		if err = writeProfile(*c.profile, *c.serializer, filePath, clientInfo); err != nil {
+			log.Fatalln(err)
 		}
 	}
 }

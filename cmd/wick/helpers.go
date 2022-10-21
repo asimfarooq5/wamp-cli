@@ -25,8 +25,14 @@
 package main
 
 import (
+	"bufio"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -43,15 +49,21 @@ const (
 	ticketAuth     = "ticket"
 	wampCraAuth    = "wampcra"
 	anonymousAuth  = "anonymous"
+
+	jsonSerializer    = "json"
+	cborSerializer    = "cbor"
+	msgpackSerializer = "msgpack"
+
+	readExecutePermission = 0755
 )
 
 func getSerializerByName(name string) serialize.Serialization {
 	switch name {
-	case "json":
+	case jsonSerializer:
 		return serialize.JSON
-	case "msgpack":
+	case msgpackSerializer:
 		return serialize.MSGPACK
-	case "cbor":
+	case cborSerializer:
 		return serialize.CBOR
 	}
 	return -1
@@ -83,37 +95,32 @@ func validateData(sessionCount int, concurrency int, keepAlive int) error {
 	return nil
 }
 
-func readFromProfile(profile string) (*core.ClientInfo, error) {
+// readFromProfile reads section from ini file.
+func readFromProfile(profile, filePath string) (*core.ClientInfo, error) {
 	clientInfo := &core.ClientInfo{}
-	cfg, err := ini.Load(os.ExpandEnv("$HOME/.wick/config"))
+	cfg, err := ini.Load(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	section, err := cfg.GetSection(profile)
+	section, err := cfg.GetSection(fmt.Sprintf("profile %s", profile))
 	if err != nil {
 		return nil, fmt.Errorf("unable to read profile: %w", err)
 	}
 
-	// FIXME: validate url is not empty and no need to fill it with
-	//  a default
-	clientInfo.Url = section.Key("url").Validate(func(s string) string {
-		if len(s) == 0 {
-			return "ws://localhost:8080/ws"
-		}
-		return s
-	})
+	clientInfo.Url = section.Key("url").String()
+	if err = validateURL(clientInfo.Url); err != nil {
+		return nil, err
+	}
 
-	// FIXME: validate realm is non empty and is a URI (no space at least)
-	clientInfo.Realm = section.Key("realm").Validate(func(s string) string {
-		if len(s) == 0 {
-			return "realm1"
-		}
-		return s
-	})
+	clientInfo.Realm = section.Key("realm").String()
+	if err = validateRealm(clientInfo.Realm); err != nil {
+		return nil, err
+	}
+
 	serializer := section.Key("serializer").String()
 	switch serializer {
-	case "msgpack", "cbor", "json":
+	case jsonSerializer, msgpackSerializer, cborSerializer:
 		clientInfo.Serializer = getSerializerByName(serializer)
 	case "":
 		// default to json if none was provided
@@ -125,20 +132,332 @@ func readFromProfile(profile string) (*core.ClientInfo, error) {
 	// FIXME: validate not empty
 	clientInfo.Authid = section.Key("authid").String()
 	clientInfo.Authrole = section.Key("authrole").String()
-	// FIXME: validate authmethod is not of invalid type
+
 	clientInfo.AuthMethod = section.Key("authmethod").String()
+	if err = validateAuthMethod(clientInfo.AuthMethod); err != nil {
+		return nil, err
+	}
 	if clientInfo.AuthMethod == cryptosignAuth {
-		// Validate private key not empty and is valid length
 		clientInfo.PrivateKey = section.Key("private-key").String()
+		if err = validatePrivateKey(clientInfo.PrivateKey); err != nil {
+			return nil, err
+		}
 	} else if clientInfo.AuthMethod == ticketAuth {
-		// validate ticket not empty
 		clientInfo.Ticket = section.Key("ticket").String()
+		if clientInfo.Ticket == "" {
+			return nil, fmt.Errorf("ticket is required for ticket authentication")
+		}
 	} else if clientInfo.AuthMethod == wampCraAuth {
-		// validate not empty
 		clientInfo.Secret = section.Key("secret").String()
+		if clientInfo.Secret == "" {
+			return nil, fmt.Errorf("secret is required for wampcra authentication")
+		}
 	}
 
 	return clientInfo, nil
+}
+
+// validateURL returns error if given string is not valid url.
+func validateURL(s string) error {
+	if s == "" {
+		return fmt.Errorf("invalid url: url must not be empty")
+	}
+	parse, err := url.ParseRequestURI(s)
+	if err != nil {
+		return err
+	}
+	switch parse.Scheme {
+	case "ws", "rs", "tcp", "wss", "rss", "tcps":
+		return nil
+	default:
+		return fmt.Errorf("invalid url: scheme must be 'ws', 'rs' or 'tcp'")
+	}
+}
+
+// validateSerializer returns error if given string is not a valid serializer.
+func validateSerializer(s string) error {
+	switch s {
+	case jsonSerializer, msgpackSerializer, cborSerializer:
+		return nil
+	default:
+		return fmt.Errorf("invalid serializer: serailizer must be 'json', 'msgpack' or 'cbor'")
+	}
+}
+
+// validateAuthMethod returns error if given string is not a valid authmethod.
+func validateAuthMethod(s string) error {
+	switch s {
+	case anonymousAuth, ticketAuth, wampCraAuth, cryptosignAuth:
+		return nil
+	default:
+		return fmt.Errorf("invalid authmethod: value must be one of 'anonymous', 'ticket', " +
+			"'wampcra', 'cryptosign'")
+	}
+}
+
+// validateRealm returns error if given string is empty or not a valid realm.
+func validateRealm(s string) error {
+	var realmPattern = regexp.MustCompile(`^([0-9a-z_]+\.)*([0-9a-z_]+)$`)
+	if !realmPattern.MatchString(s) {
+		return fmt.Errorf("invalid realm: is unset or not a valid uri")
+	}
+	return nil
+}
+
+// validatePrivateKey return error if given string is not a valid private key.
+func validatePrivateKey(s string) error {
+	privateKeyRaw, err := hex.DecodeString(s)
+	if err != nil {
+		return fmt.Errorf("invalid private key: %w", err)
+	}
+	if len(privateKeyRaw) != 64 && len(privateKeyRaw) != 32 {
+		return fmt.Errorf("invalid private key: private key must have length of 32 or 64")
+	}
+	return nil
+}
+
+// getInputFromUser ask user for input if not present in clientInfo.
+func getInputFromUser(serializer string, clientInfo *core.ClientInfo) (*core.ClientInfo, string, error) {
+	var writer = os.Stdout
+	var reader = os.Stdin
+	if clientInfo.Url == "" || clientInfo.Url == "ws://localhost:8080/ws" {
+		inputUrl, err := askForInput(reader, writer, &inputOptions{
+			Query:        "Enter url",
+			DefaultVal:   "ws://localhost:8080/ws",
+			Required:     true,
+			Loop:         true,
+			ValidateFunc: validateURL,
+		})
+		if err != nil {
+			return nil, "", err
+		}
+		clientInfo.Url = inputUrl
+	}
+
+	if clientInfo.Realm == "" || clientInfo.Realm == "realm1" {
+		inputRealm, err := askForInput(reader, writer, &inputOptions{
+			Query:        "Enter realm",
+			DefaultVal:   "realm1",
+			Required:     true,
+			Loop:         true,
+			ValidateFunc: validateRealm,
+		})
+		if err != nil {
+			return nil, "", err
+		}
+		clientInfo.Realm = inputRealm
+	}
+
+	var serializerStr string
+	if serializer == "json" {
+		inputSerializer, err := askForInput(reader, writer, &inputOptions{
+			Query:        "Enter serializer(supported are 'json', 'msgpack', 'cbor')",
+			DefaultVal:   "json",
+			Required:     true,
+			Loop:         true,
+			ValidateFunc: validateSerializer,
+		})
+		if err != nil {
+			return nil, serializerStr, err
+		}
+		serializerStr = inputSerializer
+	}
+
+	if clientInfo.Authid == "" {
+		inputAuthid, err := askForInput(reader, writer, &inputOptions{
+			Query:        "Enter authid",
+			DefaultVal:   "",
+			Required:     false,
+			Loop:         false,
+			ValidateFunc: nil,
+		})
+		if err != nil {
+			return nil, serializerStr, err
+		}
+		clientInfo.Authid = inputAuthid
+	}
+
+	if clientInfo.AuthMethod == "" || clientInfo.AuthMethod == "anonymous" {
+		inputAuthMethod, err := askForInput(reader, writer, &inputOptions{
+			Query:        "Enter authmethod(supported are 'anonymous', 'ticket', 'wampcra', 'cryptosign')",
+			DefaultVal:   "anonymous",
+			Required:     true,
+			Loop:         true,
+			ValidateFunc: validateAuthMethod,
+		})
+		clientInfo.AuthMethod = inputAuthMethod
+		if err != nil {
+			return nil, serializerStr, err
+		}
+	}
+
+	switch clientInfo.AuthMethod {
+	case ticketAuth:
+		inputTicket, err := askForInput(reader, writer, &inputOptions{
+			Query:        "Enter ticket",
+			DefaultVal:   "",
+			Required:     true,
+			Loop:         true,
+			ValidateFunc: nil,
+		})
+		if err != nil {
+			return nil, serializerStr, err
+		}
+		clientInfo.Ticket = inputTicket
+	case wampCraAuth:
+		inputSecret, err := askForInput(reader, writer, &inputOptions{
+			Query:        "Enter secret",
+			DefaultVal:   "",
+			Required:     true,
+			Loop:         true,
+			ValidateFunc: nil,
+		})
+		if err != nil {
+			return nil, serializerStr, err
+		}
+		clientInfo.Secret = inputSecret
+	case cryptosignAuth:
+		inputPrivateKey, err := askForInput(reader, writer, &inputOptions{
+			Query:        "Enter private-key",
+			DefaultVal:   "",
+			Required:     true,
+			Loop:         true,
+			ValidateFunc: validatePrivateKey,
+		})
+		if err != nil {
+			return nil, serializerStr, err
+		}
+		clientInfo.PrivateKey = inputPrivateKey
+	}
+
+	return clientInfo, serializerStr, nil
+}
+
+// writeProfile write section in ini file.
+func writeProfile(sectionName, serializerStr, filePath string, clientInfo *core.ClientInfo) error {
+	// load from ini file
+	cfg, err := ini.Load(filePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("fail to load config: %w", err)
+		}
+		// no config, use an empty one
+		cfg = ini.Empty()
+	}
+
+	// create a new section
+	section, err := cfg.NewSection(fmt.Sprintf("profile %s", sectionName))
+	if err != nil {
+		return fmt.Errorf("fail to create config: %w", err)
+	}
+
+	for _, data := range []struct {
+		key   string
+		value string
+	}{
+		{"url", clientInfo.Url},
+		{"realm", clientInfo.Realm},
+		{"serializer", serializerStr},
+		{"authid", clientInfo.Authid},
+		{"authrole", clientInfo.Authrole},
+		{"authmethod", clientInfo.AuthMethod},
+		{"private-key", clientInfo.PrivateKey},
+		{"ticket", clientInfo.Ticket},
+		{"secret", clientInfo.Secret},
+	} {
+		if data.value != "" {
+			// create new key in the section
+			if _, err = section.NewKey(data.key, data.value); err != nil {
+				return fmt.Errorf("error in creating key: %w", err)
+			}
+		}
+	}
+
+	if err = os.MkdirAll(filepath.Dir(filePath), readExecutePermission); err != nil {
+		return fmt.Errorf("cannot create directory: %w", err)
+	}
+	return cfg.SaveTo(filePath)
+}
+
+type inputOptions struct {
+	Query        string
+	DefaultVal   string
+	Required     bool
+	Loop         bool
+	ValidateFunc func(string) error
+}
+
+// askForInput asks the user for input for the given Query.
+// If Loop is true, it continues to ask until it receives valid input.
+func askForInput(reader io.Reader, writer io.Writer, options *inputOptions) (string, error) {
+	// resultStr and resultErr are return val of this function
+	var resultStr string
+	var resultErr error
+
+	for {
+		// Display the query to the user.
+		fmt.Fprintf(writer, "%s: ", options.Query)
+
+		// Display default value if not empty.
+		if options.DefaultVal != "" {
+			fmt.Fprintf(writer, "(Default is %s): ", options.DefaultVal)
+		}
+
+		// Read user input from UI.Reader.
+		line, err := read(bufio.NewReader(reader))
+		if err != nil {
+			resultErr = err
+			break
+		}
+
+		// line is empty but a default is provided, so use it
+		if line == "" && options.DefaultVal != "" {
+			resultStr = options.DefaultVal
+			break
+		}
+
+		if line == "" && options.Required {
+			if !options.Loop {
+				resultErr = fmt.Errorf("no input and no default value")
+				break
+			}
+
+			fmt.Fprintf(writer, "Input must not be empty.\n")
+			continue
+		}
+
+		// validate input by custom function
+		if options.ValidateFunc != nil {
+			if err = options.ValidateFunc(line); err != nil {
+				if !options.Loop {
+					resultErr = err
+					break
+				}
+
+				fmt.Fprintf(writer, "Invalid input: %v\n", err)
+				continue
+			}
+		}
+
+		// Reach here means it gets ideal input.
+		resultStr = line
+		break
+	}
+	return resultStr, resultErr
+}
+
+// read reads input from reader.
+func read(bReader *bufio.Reader) (string, error) {
+	var resultStr string
+	var resultErr error
+
+	line, err := bReader.ReadString('\n')
+	if err != nil && err != io.EOF {
+		resultErr = fmt.Errorf("failed to read the input: %w", err)
+	}
+
+	resultStr = strings.TrimSuffix(line, "\n")
+	return resultStr, resultErr
 }
 
 func getErrorFromErrorChannel(resC chan error) error {
