@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows:
       - snap_arm64
-      - main
+      - main-lint-test
     branches:
       - main
     types:

@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows:
       - snap_x86
-      - main
+      - main-lint-test
     branches:
       - main
     types:
