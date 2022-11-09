@@ -3,8 +3,8 @@ name: deploy-x86-snap
 on:
   workflow_run:
     workflows:
-      - snap_x86
-      - main-lint-test
+      - build-x86-snap
+      - "Lint and Test"
     branches:
       - main
     types:
