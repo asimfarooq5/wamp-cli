@@ -248,8 +248,7 @@ func getInputFromUser(serializer string, clientInfo *core.ClientInfo) (*core.Cli
 		clientInfo.Realm = inputRealm
 	}
 
-	var serializerStr string
-	if serializer == "json" {
+	if serializer == "json" || serializer == "" {
 		inputSerializer, err := askForInput(reader, writer, &inputOptions{
 			Query:        "Enter serializer(supported are 'json', 'msgpack', 'cbor')",
 			DefaultVal:   "json",
@@ -258,9 +257,9 @@ func getInputFromUser(serializer string, clientInfo *core.ClientInfo) (*core.Cli
 			ValidateFunc: validateSerializer,
 		})
 		if err != nil {
-			return nil, serializerStr, err
+			return nil, serializer, err
 		}
-		serializerStr = inputSerializer
+		serializer = inputSerializer
 	}
 
 	if clientInfo.Authid == "" {
@@ -272,7 +271,7 @@ func getInputFromUser(serializer string, clientInfo *core.ClientInfo) (*core.Cli
 			ValidateFunc: nil,
 		})
 		if err != nil {
-			return nil, serializerStr, err
+			return nil, serializer, err
 		}
 		clientInfo.Authid = inputAuthid
 	}
@@ -287,50 +286,56 @@ func getInputFromUser(serializer string, clientInfo *core.ClientInfo) (*core.Cli
 		})
 		clientInfo.AuthMethod = inputAuthMethod
 		if err != nil {
-			return nil, serializerStr, err
+			return nil, serializer, err
 		}
 	}
 
 	switch clientInfo.AuthMethod {
 	case ticketAuth:
-		inputTicket, err := askForInput(reader, writer, &inputOptions{
-			Query:        "Enter ticket",
-			DefaultVal:   "",
-			Required:     true,
-			Loop:         true,
-			ValidateFunc: nil,
-		})
-		if err != nil {
-			return nil, serializerStr, err
+		if clientInfo.Ticket == "" {
+			inputTicket, err := askForInput(reader, writer, &inputOptions{
+				Query:        "Enter ticket",
+				DefaultVal:   "",
+				Required:     true,
+				Loop:         true,
+				ValidateFunc: nil,
+			})
+			if err != nil {
+				return nil, serializer, err
+			}
+			clientInfo.Ticket = inputTicket
 		}
-		clientInfo.Ticket = inputTicket
 	case wampCraAuth:
-		inputSecret, err := askForInput(reader, writer, &inputOptions{
-			Query:        "Enter secret",
-			DefaultVal:   "",
-			Required:     true,
-			Loop:         true,
-			ValidateFunc: nil,
-		})
-		if err != nil {
-			return nil, serializerStr, err
+		if clientInfo.Secret == "" {
+			inputSecret, err := askForInput(reader, writer, &inputOptions{
+				Query:        "Enter secret",
+				DefaultVal:   "",
+				Required:     true,
+				Loop:         true,
+				ValidateFunc: nil,
+			})
+			if err != nil {
+				return nil, serializer, err
+			}
+			clientInfo.Secret = inputSecret
 		}
-		clientInfo.Secret = inputSecret
 	case cryptosignAuth:
-		inputPrivateKey, err := askForInput(reader, writer, &inputOptions{
-			Query:        "Enter private-key",
-			DefaultVal:   "",
-			Required:     true,
-			Loop:         true,
-			ValidateFunc: validatePrivateKey,
-		})
-		if err != nil {
-			return nil, serializerStr, err
+		if clientInfo.PrivateKey == "" {
+			inputPrivateKey, err := askForInput(reader, writer, &inputOptions{
+				Query:        "Enter private-key",
+				DefaultVal:   "",
+				Required:     true,
+				Loop:         true,
+				ValidateFunc: validatePrivateKey,
+			})
+			if err != nil {
+				return nil, serializer, err
+			}
+			clientInfo.PrivateKey = inputPrivateKey
 		}
-		clientInfo.PrivateKey = inputPrivateKey
 	}
 
-	return clientInfo, serializerStr, nil
+	return clientInfo, serializer, nil
 }
 
 // writeProfile write section in ini file.
