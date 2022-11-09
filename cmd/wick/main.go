@@ -37,6 +37,7 @@ import (
 	"github.com/gammazero/workerpool"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/s-things/wick/core"
 )
@@ -109,6 +110,9 @@ type cmd struct {
 	saveToFile *bool
 
 	configure *kingpin.CmdClause
+
+	run          *kingpin.CmdClause
+	runTasksFile *string
 }
 
 func parseCmd() (*cmd, string) {
@@ -118,6 +122,7 @@ func parseCmd() (*cmd, string) {
 	registerCommand := kingpin.Command("register", "Register a procedure.")
 	callCommand := kingpin.Command("call", "Call a procedure.")
 	keyGenCommand := kingpin.Command("keygen", "Generate a WAMP cryptosign ed25519 keypair.")
+	runCommand := kingpin.Command("run", "Execute tasks from 'wick.yml' file.")
 
 	c := &cmd{
 		url: kingpin.Flag("url", "WAMP URL to connect to.").
@@ -228,6 +233,10 @@ a string, send value in quotes e.g."'1'" or '"true"'. (May be provided multiple 
 		saveToFile: keyGenCommand.Flag("output-file", "Write keypair to file.").Short('O').Bool(),
 
 		configure: kingpin.Command("configure", "Configure profiles."),
+
+		run: runCommand,
+		runTasksFile: runCommand.Flag("file-path", "Enter the file path to execute.").Short('f').
+			Default("wick.yaml").String(),
 	}
 	return c, kingpin.Parse()
 }
@@ -598,6 +607,35 @@ func main() {
 			log.Fatalln(err)
 		}
 		if err = writeProfile(*c.profile, *c.serializer, filePath, clientInfo); err != nil {
+			log.Fatalln(err)
+		}
+
+	case c.run.FullCommand():
+		yamlFile, err := os.ReadFile(*c.runTasksFile)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		// FIXME: find way to unmarshal into different struct based upon type
+		var compose Compose
+		err = yaml.Unmarshal(yamlFile, &compose)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		producerSession, err := connect(clientInfo, 0)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer producerSession.Close()
+
+		consumerSession, err := connect(clientInfo, 0)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer consumerSession.Close()
+
+		if err = executeTasks(compose, producerSession, consumerSession); err != nil {
 			log.Fatalln(err)
 		}
 	}

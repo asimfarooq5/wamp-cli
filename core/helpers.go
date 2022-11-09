@@ -135,7 +135,7 @@ func dictToWampDict(kwargs map[string]string) wamp.Dict {
 func registerInvocationHandler(session *client.Client, procedure string, command string,
 	invokeCount int, hasMaxInvokeCount bool) func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
 	invocationHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
-		output, err := argsKWArgs(inv.Arguments, inv.ArgumentsKw, nil)
+		output, err := ArgsKWArgs(inv.Arguments, inv.ArgumentsKw, nil)
 		if err != nil {
 			return client.InvokeResult{Err: "wamp.error.internal_error", Args: wamp.List{err}}
 		}
@@ -166,7 +166,7 @@ func registerInvocationHandler(session *client.Client, procedure string, command
 	return invocationHandler
 }
 
-func argsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) (string, error) {
+func ArgsKWArgs(args wamp.List, kwArgs wamp.Dict, details wamp.Dict) (string, error) {
 	var builder strings.Builder
 	if details != nil {
 		jsonString, err := json.MarshalIndent(details, "", "    ")

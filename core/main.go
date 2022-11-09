@@ -93,10 +93,10 @@ func Subscribe(session *client.Client, topic string, subscribeOptions map[string
 	printDetails bool, logSubscribeTime bool, eventReceived chan struct{}) error {
 	eventHandler := func(event *wamp.Event) {
 		if printDetails {
-			output, _ := argsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
+			output, _ := ArgsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
 			fmt.Println(output)
 		} else {
-			output, _ := argsKWArgs(event.Arguments, event.ArgumentsKw, nil)
+			output, _ := ArgsKWArgs(event.Arguments, event.ArgumentsKw, nil)
 			fmt.Println(output)
 		}
 		if eventReceived != nil {

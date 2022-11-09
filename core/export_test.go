@@ -31,7 +31,6 @@ var (
 	GetCryptosignAuthConfig = getCryptosignAuthConfig
 	GetKeyPair              = getKeyPair
 	HandleCryptosign        = handleCryptosign
-	ArgsKWArgs              = argsKWArgs
 	ProgressArgsKWArgs      = progressArgsKWArgs
 	SanitizeURL             = sanitizeURL
 	ListToWampList          = listToWampList
