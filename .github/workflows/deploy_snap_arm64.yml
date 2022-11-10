@@ -4,7 +4,6 @@ on:
   workflow_run:
     workflows:
       - build-arm64-snap
-      - "Lint and Test"
     branches:
       - main
     types:
