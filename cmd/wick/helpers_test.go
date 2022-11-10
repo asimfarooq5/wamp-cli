@@ -217,7 +217,6 @@ func TestValidateAuthMethod(t *testing.T) {
 func TestValidateRealm(t *testing.T) {
 	for _, inValidRealm := range []string{
 		"test realm",
-		"test&",
 		"",
 	} {
 		err := main.ValidateRealm(inValidRealm)
@@ -227,6 +226,7 @@ func TestValidateRealm(t *testing.T) {
 	for _, validRealm := range []string{
 		"com.test.realm",
 		"com.test.realm_1",
+		"com.test.realm-1",
 	} {
 		err := main.ValidateRealm(validRealm)
 		assert.NoError(t, err)

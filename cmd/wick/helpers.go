@@ -32,12 +32,12 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/transport/serialize"
+	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/gammazero/workerpool"
 	"gopkg.in/ini.v1"
 
@@ -197,8 +197,8 @@ func validateAuthMethod(s string) error {
 
 // validateRealm returns error if given string is empty or not a valid realm.
 func validateRealm(s string) error {
-	var realmPattern = regexp.MustCompile(`^([0-9a-z_]+\.)*([0-9a-z_]+)$`)
-	if !realmPattern.MatchString(s) {
+	uri := wamp.URI(s)
+	if !uri.ValidURI(false, wamp.MatchExact) {
 		return fmt.Errorf("invalid realm: is unset or not a valid uri")
 	}
 	return nil
