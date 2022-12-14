@@ -196,3 +196,27 @@ func TestDictToWampDict(t *testing.T) {
 	wampDict := core.DictToWampDict(inputDict)
 	assert.Equal(t, expectedDict, wampDict, "error in dict conversion")
 }
+
+func TestEncodeToJson(t *testing.T) {
+	for _, data := range []struct {
+		input         interface{}
+		expectedValue string
+	}{
+		{wamp.List{"hello", 1, true, "bar"}, `[
+    "hello",
+    1,
+    true,
+    "bar"
+]
+`}, {wamp.Dict{"key": "value", "foo": "bar", "ok": 1}, `{
+    "foo": "bar",
+    "key": "value",
+    "ok": 1
+}
+`},
+	} {
+		jsonString, err := core.EncodeToJson(data.input)
+		assert.NoError(t, err)
+		assert.Equal(t, data.expectedValue, jsonString)
+	}
+}

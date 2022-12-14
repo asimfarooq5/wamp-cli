@@ -275,3 +275,14 @@ func getErrorFromErrorChannel(resC chan error) error {
 	}
 	return nil
 }
+
+func encodeToJson(value interface{}) (string, error) {
+	buffer := &bytes.Buffer{}
+	encoder := json.NewEncoder(buffer)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "    ")
+	if err := encoder.Encode(value); err != nil {
+		return "", err
+	}
+	return buffer.String(), nil
+}

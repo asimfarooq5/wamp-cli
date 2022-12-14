@@ -36,4 +36,5 @@ var (
 	ListToWampList          = listToWampList
 	DictToWampDict          = dictToWampDict
 	ShellOut                = shellOut
+	EncodeToJson            = encodeToJson
 )

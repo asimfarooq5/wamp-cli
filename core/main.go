@@ -25,10 +25,9 @@
 package core
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gammazero/nexus/v3/client"
@@ -214,15 +213,30 @@ func actuallyCall(session *client.Client, procedure string, args wamp.List, kwar
 	}
 	if err != nil {
 		return nil, err
-	} else if result != nil && len(result.Arguments) > 0 {
-		buffer := &bytes.Buffer{}
-		encoder := json.NewEncoder(buffer)
-		encoder.SetEscapeHTML(false)
-		encoder.SetIndent("", "    ")
-		if err = encoder.Encode(result.Arguments); err != nil {
-			return nil, err
+	} else if result != nil {
+		var builder strings.Builder
+		if len(result.Arguments) > 0 {
+			value, err := encodeToJson(result.Arguments)
+			if err != nil {
+				return nil, err
+			}
+			if len(result.ArgumentsKw) > 0 {
+				fmt.Fprintf(&builder, "args:\n%s", value)
+			} else {
+				// this is for backwards compatibility so wick behaves same in case only args are provided
+				fmt.Fprintf(&builder, value)
+			}
 		}
-		fmt.Println(buffer.String())
+
+		if len(result.ArgumentsKw) > 0 {
+			value, err := encodeToJson(result.ArgumentsKw)
+			if err != nil {
+				return nil, err
+			}
+			fmt.Fprintf(&builder, "kwargs:\n%s", value)
+		}
+
+		fmt.Println(builder.String())
 	}
 
 	return result, nil
