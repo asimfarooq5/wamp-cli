@@ -1,0 +1,60 @@
+version: "0.1"
+
+tasks:
+  - name: register a cool procedure
+    type: register
+    procedure: foo.bar.sample
+    options:
+      invoke: roundrobin # validate each option is only put once
+    invocation: # the args/kwargs that we expect this procedure to be invoked with
+      args:
+        - argument1
+        - arg2
+      kwargs:
+        something: notreally
+    yield: # the CallResult
+      args:
+        - hello
+        - ok
+      kwargs:
+        city: multan
+
+  - name: call a procedure
+    type: call
+    procedure: foo.bar.sample
+    options:
+      disclose_me: true
+    parameters: # call parameters
+      args:
+        - argument1
+        - arg2
+      kwargs:
+        something: notreally
+    result: # the result we expect
+      args:
+        - hello
+        - ok
+      kwargs:
+        city: multan
+
+  - name: subscribe to something
+    type: subscribe
+    topic: foo.bar.tick
+    event:
+      args:
+        - argument1
+        - arg2
+      kwargs:
+        something: notreally
+
+  - name: publish to a topic
+    type: publish
+    topic: foo.bar.tick
+    options:
+      acknowledge: true
+    parameters:
+      args:
+        - argument1
+        - arg2
+      kwargs:
+        something: notreally

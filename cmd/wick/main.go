@@ -27,6 +27,7 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	_ "embed" // nolint:gci
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -39,8 +40,15 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/s-things/wick/core"
+	"github.com/s-things/wick/core" // nolint:gci
 )
+
+var (
+	//go:embed wick.yaml.in
+	sampleConfig []byte
+)
+
+const ownerReadWritePermission = 0600
 
 type cmd struct {
 	url        *string
@@ -111,7 +119,9 @@ type cmd struct {
 
 	configure *kingpin.CmdClause
 
-	run          *kingpin.CmdClause
+	compose      *kingpin.CmdClause
+	initCommand  *kingpin.CmdClause
+	runCommand   *kingpin.CmdClause
 	runTasksFile *string
 }
 
@@ -122,7 +132,9 @@ func parseCmd() (*cmd, string) {
 	registerCommand := kingpin.Command("register", "Register a procedure.")
 	callCommand := kingpin.Command("call", "Call a procedure.")
 	keyGenCommand := kingpin.Command("keygen", "Generate a WAMP cryptosign ed25519 keypair.")
-	runCommand := kingpin.Command("run", "Execute tasks from 'wick.yml' file.")
+
+	composeCommand := kingpin.Command("compose", "")
+	runCommand := composeCommand.Command("run", "Execute tasks from 'wick.yml' file.")
 
 	c := &cmd{
 		url: kingpin.Flag("url", "WAMP URL to connect to.").
@@ -234,7 +246,9 @@ a string, send value in quotes e.g."'1'" or '"true"'. (May be provided multiple 
 
 		configure: kingpin.Command("configure", "Configure profiles."),
 
-		run: runCommand,
+		compose:     composeCommand,
+		initCommand: composeCommand.Command("init", "Initialize basic config"),
+		runCommand:  runCommand,
 		runTasksFile: runCommand.Flag("file-path", "Enter the file path to execute.").Short('f').
 			Default("wick.yaml").String(),
 	}
@@ -610,7 +624,7 @@ func main() {
 			log.Fatalln(err)
 		}
 
-	case c.run.FullCommand():
+	case c.runCommand.FullCommand():
 		yamlFile, err := os.ReadFile(*c.runTasksFile)
 		if err != nil {
 			log.Fatalln(err)
@@ -637,6 +651,11 @@ func main() {
 
 		if err = executeTasks(compose, producerSession, consumerSession); err != nil {
 			log.Fatalln(err)
+		}
+
+	case c.initCommand.FullCommand():
+		if err = os.WriteFile("wick.yaml", sampleConfig, ownerReadWritePermission); err != nil {
+			log.Fatalf("unable to write config: %v", err)
 		}
 	}
 }
