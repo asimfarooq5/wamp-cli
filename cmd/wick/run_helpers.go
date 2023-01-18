@@ -119,15 +119,28 @@ func executeTasks(compose Compose, producerSession, consumerSession *client.Clie
 			if err != nil {
 				return err
 			}
+			log.Printf("called procedure %s", task.Procedure)
 			if task.Result != nil {
 				if isEqual := equalArgsKwargs(task.Result.Args, result.Arguments, task.Result.Kwargs,
 					result.ArgumentsKw); !isEqual {
-					log.Errorf("actual call result is not equal to expected call result: expected=%v %v actual=%s %s",
-						task.Result.Args, task.Result.Kwargs, result.Arguments, result.ArgumentsKw)
+					actualOutput, err := core.ArgsKWArgs(result.Arguments, result.ArgumentsKw, nil)
+					if err != nil {
+						return err
+					}
+					expectedOutput, err := core.ArgsKWArgs(task.Result.Args, task.Result.Kwargs, nil)
+					if err != nil {
+						return err
+					}
+					log.Errorf("actual call result is not equal to expected call result: expected=%v actual=%s",
+						actualOutput, expectedOutput)
+				} else {
+					resultOutput, err := core.ArgsKWArgs(result.Arguments, result.ArgumentsKw, nil)
+					if err != nil {
+						return err
+					}
+					log.Printf("call results: %s", resultOutput)
 				}
 			}
-			log.Printf("Called procedure %s", task.Procedure)
-			log.Printf("call results: args:%s kwargs:%s", result.Arguments, result.ArgumentsKw)
 
 		case "subscribe":
 			if err := validateSubscribe(task.Topic, task.Procedure, task.Result, task.Yield, task.Invocation,
