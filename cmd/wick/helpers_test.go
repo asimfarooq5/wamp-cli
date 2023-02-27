@@ -37,14 +37,13 @@ import (
 
 	"github.com/gammazero/nexus/v3/router"
 	"github.com/gammazero/nexus/v3/transport/serialize"
-	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/gammazero/workerpool"
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	main "github.com/s-things/wick/cmd/wick"
 	"github.com/s-things/wick/core"
+	"github.com/s-things/wick/internal/testutil"
 )
 
 const (
@@ -53,32 +52,16 @@ const (
 	testConcurrency = 100
 )
 
-func startTestServer(t *testing.T, wss *router.WebsocketServer) (wsURL string) {
+func startWsServer(t *testing.T) (wsURL string) {
+	rout := testutil.NewTestRouter(t, testRealm)
+	// Create websocket server.
+	wss := router.NewWebsocketServer(rout)
 	mux := http.ServeMux{}
 	mux.HandleFunc("/ws", wss.ServeHTTP)
 	srv := httptest.NewServer(&mux)
 	t.Cleanup(srv.Close)
 	wsURL = strings.Replace(srv.URL, "http://", "ws://", 1) + "/ws"
 	return wsURL
-}
-
-func startWsServer(t *testing.T) string {
-	realmConfig := &router.RealmConfig{
-		URI:              wamp.URI(testRealm),
-		StrictURI:        true,
-		AnonymousAuth:    true,
-		AllowDisclose:    true,
-		RequireLocalAuth: true,
-	}
-	config := &router.Config{
-		RealmConfigs: []*router.RealmConfig{realmConfig},
-	}
-	rout, err := router.NewRouter(config, log.New())
-	require.NoError(t, err)
-	t.Cleanup(rout.Close)
-	// Create websocket server.
-	wss := router.NewWebsocketServer(rout)
-	return startTestServer(t, wss)
 }
 
 func TestSessions(t *testing.T) {

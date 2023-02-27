@@ -340,7 +340,7 @@ func main() {
 			case <-sigChan:
 				return
 			case <-session.Done():
-				log.Print("Router gone, exiting")
+				log.Print("client disconnected")
 			}
 		}
 
@@ -530,7 +530,7 @@ func main() {
 			case <-sigChan:
 				return
 			case <-session.Done():
-				log.Print("Router gone, exiting")
+				log.Print("client disconnected")
 			}
 		}
 

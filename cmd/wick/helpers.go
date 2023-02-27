@@ -42,6 +42,7 @@ import (
 	"gopkg.in/ini.v1"
 
 	"github.com/s-things/wick/core"
+	"github.com/s-things/wick/internal/util"
 )
 
 const (
@@ -465,19 +466,6 @@ func read(bReader *bufio.Reader) (string, error) {
 	return resultStr, resultErr
 }
 
-func getErrorFromErrorChannel(resC chan error) error {
-	var errs []string
-	for err := range resC {
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("- %v", err))
-		}
-	}
-	if len(errs) != 0 {
-		return fmt.Errorf("got errors:\n%v", strings.Join(errs, "\n"))
-	}
-	return nil
-}
-
 func connect(clientInfo *core.ClientInfo, keepalive int) (*client.Client, error) {
 	var session *client.Client
 	var err error
@@ -537,7 +525,7 @@ func getSessions(clientInfo *core.ClientInfo, sessionCount int, concurrency int,
 
 	wp.StopWait()
 	close(resC)
-	if err = getErrorFromErrorChannel(resC); err != nil {
+	if err = util.ErrorFromErrorChannel(resC); err != nil {
 		return nil, err
 	}
 	return sessions, nil

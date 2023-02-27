@@ -33,11 +33,11 @@ import (
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/router"
 	"github.com/gammazero/nexus/v3/wamp"
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/s-things/wick/core"
+	"github.com/s-things/wick/internal/testutil"
 )
 
 const (
@@ -49,62 +49,36 @@ const (
 	delay         = 1000
 )
 
-func getTestRouter() (router.Router, error) {
-	realmConfig := &router.RealmConfig{
-		URI:              wamp.URI(testRealm),
-		StrictURI:        true,
-		AnonymousAuth:    true,
-		AllowDisclose:    true,
-		RequireLocalAuth: true,
-	}
-	config := &router.Config{
-		RealmConfigs: []*router.RealmConfig{realmConfig},
-	}
-	return router.NewRouter(config, log.New())
-}
-
-func newTestClient(r router.Router) (*client.Client, error) {
+func newTestClient(t *testing.T, r router.Router) *client.Client {
 	clientConfig := &client.Config{
-		Realm:           testRealm,
-		ResponseTimeout: 500 * time.Millisecond,
-		Logger:          log.New(),
-		Debug:           false,
+		Realm: testRealm,
 	}
-	return client.ConnectLocal(r, *clientConfig)
+	c, err := client.ConnectLocal(r, *clientConfig)
+	require.NoError(t, err)
+	t.Cleanup(func() { c.Close() })
+	return c
 }
 
-func connectedTestClients() (*client.Client, *client.Client, router.Router, error) {
-	r, err := getTestRouter()
-	if err != nil {
-		return nil, nil, nil, err
-	}
+func connectedTestClients(t *testing.T) (*client.Client, *client.Client) {
+	r := testutil.NewTestRouter(t, testRealm)
 
-	c1, err := newTestClient(r)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	c2, err := newTestClient(r)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return c1, c2, r, nil
+	c1 := newTestClient(t, r)
+
+	c2 := newTestClient(t, r)
+
+	return c1, c2
 }
 
 func TestRegisterDelay(t *testing.T) {
-	rout, err := getTestRouter()
-	assert.NoError(t, err, fmt.Sprintf("error in getting router: %s\n", err))
-	defer rout.Close()
-
-	session, err := newTestClient(rout)
-	assert.NoError(t, err, fmt.Sprintf("error in getting session: %s\n", err))
-	defer session.Close()
+	rout := testutil.NewTestRouter(t, testRealm)
+	session := newTestClient(t, rout)
 
 	go func() {
-		err = core.Register(session, testProcedure, "", delay, 0, nil, false)
+		err := core.Register(session, testProcedure, "", delay, 0, nil, false)
 		assert.NoError(t, err, fmt.Sprintf("error in registering procedure: %s\n", err))
 	}()
 
-	err = session.Unregister(testProcedure)
+	err := session.Unregister(testProcedure)
 	assert.Error(t, err, "procedure should register after 1 second")
 
 	time.Sleep(1100 * time.Millisecond)
@@ -114,13 +88,9 @@ func TestRegisterDelay(t *testing.T) {
 
 func TestRegisterInvokeCount(t *testing.T) {
 	invokeCount := 2
-	sessionRegister, sessionCall, rout, err := connectedTestClients()
-	require.NoError(t, err)
-	defer sessionRegister.Close()
-	defer sessionCall.Close()
-	defer rout.Close()
+	sessionRegister, sessionCall := connectedTestClients(t)
 
-	err = core.Register(sessionRegister, testProcedure, "", 0, invokeCount, nil, false)
+	err := core.Register(sessionRegister, testProcedure, "", 0, invokeCount, nil, false)
 	require.NoError(t, err, fmt.Sprintf("error in registering procedure: %s\n", err))
 
 	for i := 0; i < invokeCount; i++ {
@@ -132,13 +102,9 @@ func TestRegisterInvokeCount(t *testing.T) {
 }
 
 func TestRegisterOnInvocationCmd(t *testing.T) {
-	sessionRegister, sessionCall, rout, err := connectedTestClients()
-	require.NoError(t, err)
-	defer sessionRegister.Close()
-	defer sessionCall.Close()
-	defer rout.Close()
+	sessionRegister, sessionCall := connectedTestClients(t)
 
-	err = core.Register(sessionRegister, testProcedure, "pwd", 0, 0, nil, false)
+	err := core.Register(sessionRegister, testProcedure, "pwd", 0, 0, nil, false)
 	require.NoError(t, err, fmt.Sprintf("error in registering procedure: %s\n", err))
 
 	result, err := sessionCall.Call(context.Background(), testProcedure, nil, nil, nil, nil)
@@ -149,11 +115,7 @@ func TestRegisterOnInvocationCmd(t *testing.T) {
 }
 
 func TestCallDelayRepeatConcurrency(t *testing.T) {
-	sessionRegister, sessionCall, rout, err := connectedTestClients()
-	require.NoError(t, err)
-	defer sessionRegister.Close()
-	defer sessionCall.Close()
-	defer rout.Close()
+	sessionRegister, sessionCall := connectedTestClients(t)
 
 	iterator := 0
 	invocationHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
@@ -161,9 +123,9 @@ func TestCallDelayRepeatConcurrency(t *testing.T) {
 		return client.InvokeResult{Args: wamp.List{}}
 	}
 
-	err = sessionRegister.Register(testProcedure, invocationHandler, nil)
+	err := sessionRegister.Register(testProcedure, invocationHandler, nil)
 	require.NoError(t, err, fmt.Sprintf("error in registering procedure: %s\n", err))
-	defer sessionRegister.Unregister(testProcedure)
+	t.Cleanup(func() { sessionRegister.Unregister(testProcedure) })
 
 	t.Run("TestCallDelay", func(t *testing.T) {
 		go func() {
@@ -185,15 +147,11 @@ func TestCallDelayRepeatConcurrency(t *testing.T) {
 }
 
 func TestSubscribe(t *testing.T) {
-	rout, err := getTestRouter()
-	assert.NoError(t, err, fmt.Sprintf("error in getting router: %s\n", err))
-	defer rout.Close()
+	rout := testutil.NewTestRouter(t, testRealm)
 
-	session, err := newTestClient(rout)
-	assert.NoError(t, err, fmt.Sprintf("error in getting session: %s\n", err))
-	defer session.Close()
+	session := newTestClient(t, rout)
 
-	err = core.Subscribe(session, testTopic, nil, false, false, nil)
+	err := core.Subscribe(session, testTopic, nil, false, false, nil)
 	require.NoError(t, err, fmt.Sprintf("error in subscribing: %s\n", err))
 
 	err = session.Unsubscribe(testTopic)
@@ -201,20 +159,16 @@ func TestSubscribe(t *testing.T) {
 }
 
 func TestPublishDelayRepeatConcurrency(t *testing.T) {
-	sessionSubscribe, sessionPublish, rout, err := connectedTestClients()
-	require.NoError(t, err)
-	defer sessionSubscribe.Close()
-	defer sessionPublish.Close()
-	defer rout.Close()
+	sessionSubscribe, sessionPublish := connectedTestClients(t)
 
 	iterator := 0
 	eventHandler := func(event *wamp.Event) {
 		iterator++
 	}
 
-	err = sessionSubscribe.Subscribe(testTopic, eventHandler, nil)
+	err := sessionSubscribe.Subscribe(testTopic, eventHandler, nil)
 	require.NoError(t, err, fmt.Sprintf("error in subscribing topic: %s\n", err))
-	defer sessionSubscribe.Unsubscribe(testTopic)
+	t.Cleanup(func() { sessionSubscribe.Unsubscribe(testTopic) })
 
 	t.Run("TestPublishDelay", func(t *testing.T) {
 		go func() {

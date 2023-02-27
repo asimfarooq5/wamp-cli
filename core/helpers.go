@@ -263,19 +263,6 @@ func sanitizeURL(url string) string {
 	return url
 }
 
-func getErrorFromErrorChannel(resC chan error) error {
-	var errs []string
-	for err := range resC {
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("- %v", err))
-		}
-	}
-	if len(errs) != 0 {
-		return fmt.Errorf("got errors:\n%v", strings.Join(errs, "\n"))
-	}
-	return nil
-}
-
 func encodeToJson(value interface{}) (string, error) {
 	buffer := &bytes.Buffer{}
 	encoder := json.NewEncoder(buffer)

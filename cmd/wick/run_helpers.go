@@ -132,7 +132,7 @@ func executeTasks(compose Compose, producerSession, consumerSession *client.Clie
 						return err
 					}
 					log.Errorf("actual call result is not equal to expected call result: expected=%v actual=%s",
-						actualOutput, expectedOutput)
+						expectedOutput, actualOutput)
 				} else {
 					resultOutput, err := core.ArgsKWArgs(result.Arguments, result.ArgumentsKw, nil)
 					if err != nil {
