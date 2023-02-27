@@ -29,6 +29,7 @@ import (
 	"crypto/rand"
 	_ "embed" // nolint:gci
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -654,6 +655,15 @@ func main() {
 		}
 
 	case c.initCommand.FullCommand():
+		info, err := os.Stat("wick.yaml")
+		if err == nil {
+			log.Printf("file %s already exists", info.Name())
+			return
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Fatalln(err)
+		}
+
 		if err = os.WriteFile("wick.yaml", sampleConfig, ownerReadWritePermission); err != nil {
 			log.Fatalf("unable to write config: %v", err)
 		}
