@@ -36,6 +36,8 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/gammazero/nexus/v3/client"
+	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/gammazero/workerpool"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -259,6 +261,25 @@ a string, send value in quotes e.g."'1'" or '"true"'. (May be provided multiple 
 	return c, kingpin.Parse()
 }
 
+func sessionsDone(sessions []*client.Client, allSessionDoneC chan struct{}) {
+	wp := workerpool.New(len(sessions))
+	for _, session := range sessions {
+		sess := session
+		wp.Submit(func() {
+			<-sess.Done()
+			if sess.RouterGoodbye() == nil {
+				log.Println("client disconnect unexpectedly")
+			} else if sess.RouterGoodbye().Reason == wamp.CloseSystemShutdown {
+				log.Print("Router gone, exiting")
+			} else {
+				log.Println("client disconnected")
+			}
+		})
+	}
+	wp.StopWait()
+	allSessionDoneC <- struct{}{}
+}
+
 const versionString = "0.6.0"
 
 func main() {
@@ -338,13 +359,11 @@ func main() {
 		// Wait for CTRL-c or client close while handling events.
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt)
-		for _, session := range sessions {
-			select {
-			case <-sigChan:
-				return
-			case <-session.Done():
-				log.Print("client disconnected")
-			}
+		allSessionsDoneC := make(chan struct{}, len(sessions))
+		go sessionsDone(sessions, allSessionsDoneC)
+		select {
+		case <-sigChan:
+		case <-allSessionsDoneC:
 		}
 
 	case c.subscribe.FullCommand():
@@ -398,15 +417,8 @@ func main() {
 		}
 		wp.StopWait()
 
-		// TODO find a nicer way of waiting for all sessions to complete
-		allSessionsDoneC := make(chan struct{}, 1)
-		go func() {
-			for _, session := range sessions {
-				<-session.Done()
-			}
-			log.Print("router gone")
-			allSessionsDoneC <- struct{}{}
-		}()
+		allSessionsDoneC := make(chan struct{}, len(sessions))
+		go sessionsDone(sessions, allSessionsDoneC)
 
 		// Wait for CTRL-c or client close while handling events.
 		sigChan := make(chan os.Signal, 1)
@@ -528,13 +540,11 @@ func main() {
 		// Wait for CTRL-c or client close while handling events.
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt)
-		for _, session := range sessions {
-			select {
-			case <-sigChan:
-				return
-			case <-session.Done():
-				log.Print("client disconnected")
-			}
+		allSessionsDoneC := make(chan struct{}, len(sessions))
+		go sessionsDone(sessions, allSessionsDoneC)
+		select {
+		case <-sigChan:
+		case <-allSessionsDoneC:
 		}
 
 	case c.call.FullCommand():
