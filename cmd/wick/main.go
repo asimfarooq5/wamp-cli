@@ -114,9 +114,10 @@ type cmd struct {
 	concurrentCalls  *int
 	callSessionCount *int
 	keepaliveCall    *int
+	callRawOutArg    *int
 
-	keyGen     *kingpin.CmdClause
-	saveToFile *bool
+	keyGen           *kingpin.CmdClause
+	keyGenSaveToFile *bool
 
 	configure *kingpin.CmdClause
 
@@ -241,9 +242,11 @@ a string, send value in quotes e.g."'1'" or '"true"'. (May be provided multiple 
 			Default("1").Int(),
 		keepaliveCall: callCommand.Flag("keepalive", "Interval between websocket pings.").
 			Default("0").Int(),
+		callRawOutArg: callCommand.Flag("raw-output-arg",
+			"Output the content of this result argument directly to stdout").Default("-1").Int(),
 
-		keyGen:     keyGenCommand,
-		saveToFile: keyGenCommand.Flag("output-file", "Write keypair to file.").Short('O').Bool(),
+		keyGen:           keyGenCommand,
+		keyGenSaveToFile: keyGenCommand.Flag("output-file", "Write keypair to file.").Short('O').Bool(),
 
 		configure: kingpin.Command("configure", "Configure profiles."),
 
@@ -575,8 +578,18 @@ func main() {
 		for _, session := range sessions {
 			sess := session
 			wp.Submit(func() {
-				if err = core.Call(sess, *c.callProcedure, *c.callArgs, *c.callKeywordArgs, *c.logCallTime,
-					*c.repeatCount, *c.delayCall, *c.concurrentCalls, *c.callOptions); err != nil {
+				opts := core.CallOptions{
+					LogCallTime: *c.logCallTime,
+					RepeatCount: *c.repeatCount,
+					DelayCall:   *c.delayCall,
+					Concurrency: *c.concurrentCalls,
+					WAMPOptions: *c.callOptions,
+				}
+				if *c.callRawOutArg != -1 {
+					opts.RawArgOut = true
+					opts.RawArgOutIndex = *c.callRawOutArg
+				}
+				if err = core.Call(sess, *c.callProcedure, *c.callArgs, *c.callKeywordArgs, opts); err != nil {
 					log.Fatalln(err)
 				}
 			})
@@ -590,7 +603,7 @@ func main() {
 		}
 		publicString := hex.EncodeToString(pub)
 		privateString := hex.EncodeToString(pri.Seed())
-		if *c.saveToFile {
+		if *c.keyGenSaveToFile {
 			err = ioutil.WriteFile("key", []byte(privateString), os.ModePerm)
 			if err != nil {
 				log.Fatalln(err)

@@ -27,6 +27,8 @@ package core
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -197,25 +199,67 @@ func Register(session *client.Client, procedure string, command string, delay in
 	return nil
 }
 
+func dumpRawArg(args wamp.List, idx int, out io.Writer) error {
+	if idx < 0 {
+		return fmt.Errorf("cannot dump argument with negative index")
+	}
+	if idx >= len(args) {
+		return fmt.Errorf("cannot dump argument %d with only %d args", idx, len(args))
+	}
+	idxArg := args[idx]
+	if idxArg == nil {
+		// could be an end of a binary sequence
+		return nil
+	}
+
+	switch arg := idxArg.(type) {
+	case string:
+		_, err := out.Write([]byte(arg))
+		return err
+	case []byte:
+		_, err := out.Write(arg)
+		return err
+	default:
+		return fmt.Errorf("cannot produce raw output of argument of type %T", idxArg)
+	}
+}
+
 func actuallyCall(session *client.Client, procedure string, args wamp.List, kwargs wamp.Dict,
-	delayCall int, callOptions wamp.Dict) (*wamp.Result, error) {
-	if delayCall > 0 {
-		time.Sleep(time.Duration(delayCall) * time.Millisecond)
+	opts CallOptions) (*wamp.Result, error) {
+	//	delayCall int, callOptions wamp.Dict)
+	if opts.DelayCall > 0 {
+		time.Sleep(time.Duration(opts.DelayCall) * time.Millisecond)
+	}
+	var wampOptions wamp.Dict
+	if len(opts.WAMPOptions) != 0 {
+		wampOptions = dictToWampDict(opts.WAMPOptions)
 	}
 
 	var result *wamp.Result
 	var err error
-	if callOptions["receive_progress"] != nil && callOptions["receive_progress"] == true {
-		result, err = session.Call(context.Background(), procedure, callOptions, args, kwargs, func(progress *wamp.Result) {
+	// FIXME use better way to pass error than through cancelable context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if wampOptions["receive_progress"] != nil && wampOptions["receive_progress"] == true {
+		result, err = session.Call(ctx, procedure, wampOptions, args, kwargs, func(progress *wamp.Result) {
+			if opts.RawArgOut {
+				if err := dumpRawArg(progress.Arguments, opts.RawArgOutIndex, os.Stdout); err != nil {
+					cancel()
+				}
+				return
+			}
 			output, _ := progressArgsKWArgs(progress.Arguments, progress.ArgumentsKw)
 			fmt.Println(output)
 		})
 	} else {
-		result, err = session.Call(context.Background(), procedure, callOptions, args, kwargs, nil)
+		result, err = session.Call(context.Background(), procedure, wampOptions, args, kwargs, nil)
 	}
 	if err != nil {
 		return nil, err
 	} else if result != nil {
+		if opts.RawArgOut {
+			return nil, dumpRawArg(result.Arguments, opts.RawArgOutIndex, os.Stdout)
+		}
 		var builder strings.Builder
 		if len(result.Arguments) > 0 {
 			value, err := encodeToJson(result.Arguments)
@@ -244,20 +288,33 @@ func actuallyCall(session *client.Client, procedure string, args wamp.List, kwar
 	return result, nil
 }
 
-func Call(session *client.Client, procedure string, args []string, kwargs map[string]string,
-	logCallTime bool, repeatCount int, delayCall int, concurrency int, callOptions map[string]string) error {
+type CallOptions struct {
+	LogCallTime bool
+	RepeatCount int
+	DelayCall   int
+	Concurrency int
+	WAMPOptions map[string]string
+	// RawArgOut when true RawArgOutIndex contains an index
+	// of the argument that shall be dumped to stdout
+	RawArgOut      bool
+	RawArgOutIndex int
+}
+
+func Call(session *client.Client, procedure string, args []string, kwargs map[string]string, opts CallOptions) error {
 	var startTime int64
-	if logCallTime {
+	if opts.LogCallTime {
 		startTime = time.Now().UnixMilli()
 	}
+	if opts.RepeatCount == 0 {
+		opts.RepeatCount = 1
+	}
 
-	wp := workerpool.New(concurrency)
-	resC := make(chan error, repeatCount)
+	wp := workerpool.New(opts.Concurrency)
+	resC := make(chan error, opts.RepeatCount)
 
-	for i := 0; i < repeatCount; i++ {
+	for i := 0; i < opts.RepeatCount; i++ {
 		wp.Submit(func() {
-			_, err := actuallyCall(session, procedure, listToWampList(args), dictToWampDict(kwargs),
-				delayCall, dictToWampDict(callOptions))
+			_, err := actuallyCall(session, procedure, listToWampList(args), dictToWampDict(kwargs), opts)
 			resC <- err
 		})
 	}
@@ -267,9 +324,9 @@ func Call(session *client.Client, procedure string, args []string, kwargs map[st
 		return err
 	}
 
-	if logCallTime {
+	if opts.LogCallTime {
 		endTime := time.Now().UnixMilli()
-		log.Printf("%d calls took %dms\n", repeatCount, endTime-startTime)
+		log.Printf("%d calls took %dms\n", opts.RepeatCount, endTime-startTime)
 	}
 	return nil
 }
