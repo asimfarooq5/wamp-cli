@@ -27,6 +27,9 @@ package core_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -114,13 +117,22 @@ func TestRegisterOnInvocationCmd(t *testing.T) {
 	require.Equal(t, out, result.Arguments[0], "invalid call results")
 }
 
+func mockStdout(t *testing.T, mockStdout *os.File) {
+	oldStdout := os.Stdout
+	t.Cleanup(func() { os.Stdout = oldStdout })
+	os.Stdout = mockStdout
+}
+
 func TestCallDelayRepeatConcurrency(t *testing.T) {
 	sessionRegister, sessionCall := connectedTestClients(t)
 
+	var m sync.Mutex
 	iterator := 0
 	invocationHandler := func(ctx context.Context, inv *wamp.Invocation) client.InvokeResult {
+		m.Lock()
 		iterator++
-		return client.InvokeResult{Args: wamp.List{}}
+		m.Unlock()
+		return client.InvokeResult{Args: wamp.List{wamp.Dict{"foo": "bar"}}}
 	}
 
 	err := sessionRegister.Register(testProcedure, invocationHandler, nil)
@@ -134,18 +146,35 @@ func TestCallDelayRepeatConcurrency(t *testing.T) {
 			})
 			require.NoError(t, err, fmt.Sprintf("error in calling procedure: %s\n", err))
 		}()
-		require.Equal(t, 0, iterator, "procedure called without delay")
+		m.Lock()
+		iter := iterator
+		m.Unlock()
+		require.Equal(t, 0, iter, "procedure called without delay")
 		time.Sleep(1100 * time.Millisecond)
-		require.Equal(t, 1, iterator, "procedure not even called after delay")
+
+		m.Lock()
+		iter = iterator
+		m.Unlock()
+
+		require.Equal(t, 1, iter, "procedure not even called after delay")
 		iterator = 0
 	})
 
 	t.Run("TestCallRepeat", func(t *testing.T) {
+		// to avoid logging of call results
+		mockStdout(t, os.NewFile(uintptr(syscall.Stdin), os.DevNull))
+
 		err = core.Call(sessionCall, testProcedure, []string{"Hello", "1"}, nil, core.CallOptions{
 			RepeatCount: repeatCount,
 		})
 		require.NoError(t, err, fmt.Sprintf("error in calling procedure: %s\n", err))
-		require.Equal(t, 1000, iterator, "procedure not correctly called repeatedly")
+		require.Eventually(t, func() bool {
+			m.Lock()
+			iter := iterator
+			m.Unlock()
+			require.Equal(t, repeatCount, iter, "procedure not correctly called repeatedly")
+			return true
+		}, 1*time.Second, 50*time.Millisecond)
 	})
 
 }
@@ -165,9 +194,12 @@ func TestSubscribe(t *testing.T) {
 func TestPublishDelayRepeatConcurrency(t *testing.T) {
 	sessionSubscribe, sessionPublish := connectedTestClients(t)
 
+	var m sync.Mutex
 	iterator := 0
 	eventHandler := func(event *wamp.Event) {
+		m.Lock()
 		iterator++
+		m.Unlock()
 	}
 
 	err := sessionSubscribe.Subscribe(testTopic, eventHandler, nil)
@@ -179,15 +211,29 @@ func TestPublishDelayRepeatConcurrency(t *testing.T) {
 			err = core.Publish(sessionPublish, testTopic, nil, nil, nil, false, 1, 1000, 1)
 			require.NoError(t, err, fmt.Sprintf("error in publishing: %s\n", err))
 		}()
-		require.Equal(t, 0, iterator, "topic published without delay")
+		m.Lock()
+		iter := iterator
+		m.Unlock()
+		require.Equal(t, 0, iter, "topic published without delay")
 		time.Sleep(1100 * time.Millisecond)
-		require.Equal(t, 1, iterator, "topic not even published after delay")
+
+		m.Lock()
+		iter = iterator
+		m.Unlock()
+		require.Equal(t, 1, iter, "topic not even published after delay")
 		iterator = 0
 	})
 
 	t.Run("TestPublishRepeat", func(t *testing.T) {
 		err = core.Publish(sessionPublish, testTopic, []string{"Hello", "1"}, nil, nil, false, repeatPublish, 0, 1)
 		require.NoError(t, err, fmt.Sprintf("error in publishing topic: %s\n", err))
-		require.Equal(t, repeatPublish, iterator, "topic not correctly publish repeatedly")
+
+		require.Eventually(t, func() bool {
+			m.Lock()
+			iter := iterator
+			m.Unlock()
+			require.Equal(t, repeatPublish, iter, "topic not correctly publish repeatedly")
+			return true
+		}, 1*time.Second, 50*time.Millisecond)
 	})
 }
