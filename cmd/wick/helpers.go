@@ -34,11 +34,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/transport/serialize"
 	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/gammazero/workerpool"
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/ini.v1"
 
 	"github.com/s-things/wick/core"
@@ -80,20 +82,6 @@ func selectAuthMethod(privateKey string, ticket string, secret string) string {
 	}
 
 	return anonymousAuth
-}
-
-func validateData(sessionCount int, concurrency int, keepAlive int) error {
-	if sessionCount < 1 {
-		return fmt.Errorf("parallel must be greater than zero")
-	}
-	if concurrency < 1 {
-		return fmt.Errorf("concurrency must be greater than zero")
-	}
-	if keepAlive < 0 {
-		return fmt.Errorf("keepalive interval must be greater than zero")
-	}
-
-	return nil
 }
 
 // readFromProfile reads section from ini file.
@@ -395,11 +383,7 @@ type inputOptions struct {
 
 // askForInput asks the user for input for the given Query.
 // If Loop is true, it continues to ask until it receives valid input.
-func askForInput(reader io.Reader, writer io.Writer, options *inputOptions) (string, error) {
-	// resultStr and resultErr are return val of this function
-	var resultStr string
-	var resultErr error
-
+func askForInput(reader io.Reader, writer io.Writer, options *inputOptions) (resultStr string, resultErr error) {
 	for {
 		// Display the query to the user.
 		fmt.Fprintf(writer, "%s: ", options.Query)
@@ -453,10 +437,7 @@ func askForInput(reader io.Reader, writer io.Writer, options *inputOptions) (str
 }
 
 // read reads input from reader.
-func read(bReader *bufio.Reader) (string, error) {
-	var resultStr string
-	var resultErr error
-
+func read(bReader *bufio.Reader) (resultStr string, resultErr error) {
 	line, err := bReader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		resultErr = fmt.Errorf("failed to read the input: %w", err)
@@ -466,10 +447,7 @@ func read(bReader *bufio.Reader) (string, error) {
 	return resultStr, resultErr
 }
 
-func connect(clientInfo *core.ClientInfo, keepalive int) (*client.Client, error) {
-	var session *client.Client
-	var err error
-
+func connect(clientInfo *core.ClientInfo, keepalive int) (session *client.Client, err error) {
 	switch clientInfo.AuthMethod {
 	case anonymousAuth:
 		if clientInfo.PrivateKey != "" {
@@ -505,21 +483,42 @@ func connect(clientInfo *core.ClientInfo, keepalive int) (*client.Client, error)
 	return session, err
 }
 
-func getSessions(clientInfo *core.ClientInfo, sessionCount int, concurrency int,
-	keepalive int) ([]*client.Client, error) {
-	var sessions []*client.Client
-	var mutex sync.Mutex
-	var session *client.Client
-	var err error
-	wp := workerpool.New(concurrency)
-	resC := make(chan error, sessionCount)
-	for i := 0; i < sessionCount; i++ {
+type SessionOptions struct {
+	SessionCount int
+	Concurrency  int
+	Keepalive    int
+	LogTime      bool
+	sync.Mutex
+}
+
+func (opt *SessionOptions) validate() error {
+	if opt.SessionCount < 1 {
+		return fmt.Errorf("parallel must be greater than zero")
+	}
+	if opt.Concurrency < 1 {
+		return fmt.Errorf("concurrency must be greater than zero")
+	}
+	if opt.Keepalive < 0 {
+		return fmt.Errorf("keepalive interval must be greater than zero")
+	}
+
+	return nil
+}
+
+func (opt *SessionOptions) getSessions(clientInfo *core.ClientInfo) (sessions []*client.Client, err error) {
+	wp := workerpool.New(opt.Concurrency)
+	resC := make(chan error, opt.SessionCount)
+	var startTime int64
+	if opt.LogTime {
+		startTime = time.Now().UnixMilli()
+	}
+	for i := 0; i < opt.SessionCount; i++ {
 		wp.Submit(func() {
-			session, err = connect(clientInfo, keepalive)
-			mutex.Lock()
+			session, errC := connect(clientInfo, opt.Keepalive)
+			opt.Lock()
 			sessions = append(sessions, session)
-			mutex.Unlock()
-			resC <- err
+			opt.Unlock()
+			resC <- errC
 		})
 	}
 
@@ -527,6 +526,11 @@ func getSessions(clientInfo *core.ClientInfo, sessionCount int, concurrency int,
 	close(resC)
 	if err = util.ErrorFromErrorChannel(resC); err != nil {
 		return nil, err
+	}
+
+	if opt.LogTime {
+		endTime := time.Now().UnixMilli()
+		log.Printf("%v sessions joined in %dms\n", opt.SessionCount, endTime-startTime)
 	}
 	return sessions, nil
 }

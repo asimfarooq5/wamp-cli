@@ -26,16 +26,12 @@ package main_test
 
 import (
 	"testing"
-	"time"
 
-	"github.com/gammazero/nexus/v3/client"
-	"github.com/gammazero/nexus/v3/router"
 	"github.com/gammazero/nexus/v3/wamp"
-	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	main "github.com/s-things/wick/cmd/wick"
+	"github.com/s-things/wick/internal/testutil"
 )
 
 const (
@@ -45,47 +41,6 @@ const (
 	testTopic  = "com.topic.test"
 	testTopic1 = "com.topic.test1"
 )
-
-func getTestRouter() (router.Router, error) {
-	realmConfig := &router.RealmConfig{
-		URI:              wamp.URI(testRealm),
-		StrictURI:        true,
-		AnonymousAuth:    true,
-		AllowDisclose:    true,
-		RequireLocalAuth: true,
-	}
-	config := &router.Config{
-		RealmConfigs: []*router.RealmConfig{realmConfig},
-	}
-	return router.NewRouter(config, log.New())
-}
-
-func newTestClient(r router.Router) (*client.Client, error) {
-	clientConfig := &client.Config{
-		Realm:           testRealm,
-		ResponseTimeout: 500 * time.Millisecond,
-		Logger:          log.New(),
-		Debug:           false,
-	}
-	return client.ConnectLocal(r, *clientConfig)
-}
-
-func connectedTestClients() (*client.Client, *client.Client, router.Router, error) {
-	r, err := getTestRouter()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	c1, err := newTestClient(r)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	c2, err := newTestClient(r)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return c1, c2, r, nil
-}
 
 func TestEqualArgsKwargs(t *testing.T) {
 	for _, data := range []struct {
@@ -114,11 +69,7 @@ func TestEqualArgsKwargs(t *testing.T) {
 }
 
 func TestRunTasks(t *testing.T) {
-	producerSession, consumerSession, rout, err := connectedTestClients()
-	require.NoError(t, err)
-	defer producerSession.Close()
-	defer consumerSession.Close()
-	defer rout.Close()
+	producerSession, consumerSession := testutil.ConnectedTestClients(t)
 
 	compose := main.Compose{
 		Version: "2.0",
@@ -146,7 +97,7 @@ func TestRunTasks(t *testing.T) {
 				Parameters: &main.ArgsKwargs{Args: wamp.List{"Hello", "ok"}, Kwargs: wamp.Dict{"key": "value"}}},
 		},
 	}
-	err = main.ExecuteTasks(compose, producerSession, consumerSession)
+	err := main.ExecuteTasks(compose, producerSession, consumerSession)
 	assert.NoError(t, err)
 
 	for _, invalidCompose := range []main.Compose{

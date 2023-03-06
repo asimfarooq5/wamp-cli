@@ -26,7 +26,7 @@ package main
 
 var (
 	Connect             = connect
-	GetSessions         = getSessions
+	GetSessions         = (*SessionOptions).getSessions
 	GetSerializerByName = getSerializerByName
 	SelectAuthMethod    = selectAuthMethod
 	ValidateURL         = validateURL

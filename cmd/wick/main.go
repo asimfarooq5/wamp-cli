@@ -34,7 +34,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/wamp"
@@ -280,6 +279,18 @@ func sessionsDone(sessions []*client.Client, allSessionDoneC chan struct{}) {
 	allSessionDoneC <- struct{}{}
 }
 
+func closeSessions(sessions []*client.Client) {
+	wp := workerpool.New(len(sessions))
+	for _, sess := range sessions {
+		s := sess
+		wp.Submit(func() {
+			// Close the connection to the router
+			s.Close()
+		})
+	}
+	wp.StopWait()
+}
+
 const versionString = "0.6.0"
 
 func main() {
@@ -327,34 +338,21 @@ func main() {
 
 	switch selectedCommand {
 	case c.join.FullCommand():
-		if err = validateData(*c.joinSessionCount, *c.concurrentJoin, *c.keepaliveJoin); err != nil {
+		sessionOptions := &SessionOptions{
+			SessionCount: *c.joinSessionCount,
+			Concurrency:  *c.concurrentJoin,
+			Keepalive:    *c.keepaliveJoin,
+			LogTime:      *c.logJoinTime,
+		}
+		if err = sessionOptions.validate(); err != nil {
 			log.Fatalln(err)
 		}
-
-		var startTime int64
-		if *c.logJoinTime {
-			startTime = time.Now().UnixMilli()
-		}
-		sessions, err := getSessions(clientInfo, *c.joinSessionCount, *c.concurrentJoin, *c.keepaliveJoin)
+		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		if *c.logJoinTime {
-			endTime := time.Now().UnixMilli()
-			log.Printf("%v sessions joined in %dms\n", *c.joinSessionCount, endTime-startTime)
-		}
 
-		defer func() {
-			wp := workerpool.New(len(sessions))
-			for _, sess := range sessions {
-				s := sess
-				wp.Submit(func() {
-					// Close the connection to the router
-					s.Close()
-				})
-			}
-			wp.StopWait()
-		}()
+		defer closeSessions(sessions)
 
 		// Wait for CTRL-c or client close while handling events.
 		sigChan := make(chan os.Signal, 1)
@@ -367,24 +365,22 @@ func main() {
 		}
 
 	case c.subscribe.FullCommand():
-		if err = validateData(*c.subscribeSessionCount, *c.concurrentSubscribe, *c.keepaliveSubscribe); err != nil {
+		sessionOptions := &SessionOptions{
+			SessionCount: *c.subscribeSessionCount,
+			Concurrency:  *c.concurrentSubscribe,
+			Keepalive:    *c.keepaliveSubscribe,
+			LogTime:      *c.logSubscribeTime,
+		}
+		if err = sessionOptions.validate(); err != nil {
 			log.Fatalln(err)
 		}
 		if *c.subscribeEventCount < 0 {
 			log.Fatalln("event count must be greater than zero")
 		}
 
-		var startTime int64
-		if *c.logSubscribeTime {
-			startTime = time.Now().UnixMilli()
-		}
-		sessions, err := getSessions(clientInfo, *c.subscribeSessionCount, *c.concurrentSubscribe, *c.keepaliveSubscribe)
+		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
 			log.Fatalln(err)
-		}
-		if *c.logSubscribeTime {
-			endTime := time.Now().UnixMilli()
-			log.Printf("%v sessions joined in %dms\n", *c.subscribeSessionCount, endTime-startTime)
 		}
 
 		defer func() {
@@ -443,37 +439,25 @@ func main() {
 		}
 
 	case c.publish.FullCommand():
-		if err = validateData(*c.publishSessionCount, *c.concurrentPublish, *c.keepalivePublish); err != nil {
+		sessionOptions := &SessionOptions{
+			SessionCount: *c.publishSessionCount,
+			Concurrency:  *c.concurrentPublish,
+			Keepalive:    *c.keepalivePublish,
+			LogTime:      *c.logPublishTime,
+		}
+		if err = sessionOptions.validate(); err != nil {
 			log.Fatalln(err)
 		}
 
-		var startTime int64
 		if *c.repeatPublish < 1 {
 			log.Fatalln("repeat count must be greater than zero")
 		}
-		if *c.logPublishTime {
-			startTime = time.Now().UnixMilli()
-		}
-		sessions, err := getSessions(clientInfo, *c.publishSessionCount, *c.concurrentPublish, *c.keepalivePublish)
+		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		if *c.logPublishTime {
-			endTime := time.Now().UnixMilli()
-			log.Printf("%v sessions joined in %dms\n", *c.publishSessionCount, endTime-startTime)
-		}
 
-		defer func() {
-			wp := workerpool.New(len(sessions))
-			for _, sess := range sessions {
-				s := sess
-				wp.Submit(func() {
-					// Close the connection to the router
-					s.Close()
-				})
-			}
-			wp.StopWait()
-		}()
+		defer closeSessions(sessions)
 
 		wp := workerpool.New(*c.concurrentPublish)
 		for _, session := range sessions {
@@ -488,21 +472,19 @@ func main() {
 		wp.StopWait()
 
 	case c.register.FullCommand():
-		if err = validateData(*c.registerSessionCount, *c.concurrentRegister, *c.keepaliveRegister); err != nil {
+		sessionOptions := &SessionOptions{
+			SessionCount: *c.registerSessionCount,
+			Concurrency:  *c.concurrentRegister,
+			Keepalive:    *c.keepaliveRegister,
+			LogTime:      *c.logRegisterTime,
+		}
+		if err = sessionOptions.validate(); err != nil {
 			log.Fatalln(err)
 		}
 
-		var startTime int64
-		if *c.logRegisterTime {
-			startTime = time.Now().UnixMilli()
-		}
-		sessions, err := getSessions(clientInfo, *c.registerSessionCount, *c.concurrentRegister, *c.keepaliveRegister)
+		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
 			log.Fatalln(err)
-		}
-		if *c.logRegisterTime {
-			endTime := time.Now().UnixMilli()
-			log.Printf("%v sessions joined in %dms\n", *c.registerSessionCount, endTime-startTime)
 		}
 
 		defer func() {
@@ -548,41 +530,26 @@ func main() {
 		}
 
 	case c.call.FullCommand():
-		if err = validateData(*c.callSessionCount, *c.concurrentCalls, *c.keepaliveCall); err != nil {
+		sessionOptions := &SessionOptions{
+			SessionCount: *c.callSessionCount,
+			Concurrency:  *c.concurrentCalls,
+			Keepalive:    *c.keepaliveCall,
+			LogTime:      *c.logCallTime,
+		}
+		if err = sessionOptions.validate(); err != nil {
 			log.Fatalln(err)
 		}
 
-		var startTime int64
 		if *c.repeatCount < 1 {
 			log.Fatalln("repeat count must be greater than zero")
 		}
-		if *c.callSessionCount < 0 {
-			log.Fatalln("parallel must be greater than zero")
-		}
 
-		if *c.logCallTime {
-			startTime = time.Now().UnixMilli()
-		}
-		sessions, err := getSessions(clientInfo, *c.callSessionCount, *c.concurrentCalls, *c.keepaliveCall)
+		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		if *c.logCallTime {
-			endTime := time.Now().UnixMilli()
-			log.Printf("%v sessions joined in %dms\n", *c.callSessionCount, endTime-startTime)
-		}
 
-		defer func() {
-			wp := workerpool.New(len(sessions))
-			for _, sess := range sessions {
-				s := sess
-				wp.Submit(func() {
-					// Close the connection to the router
-					s.Close()
-				})
-			}
-			wp.StopWait()
-		}()
+		defer closeSessions(sessions)
 
 		wp := workerpool.New(*c.concurrentCalls)
 		for _, session := range sessions {

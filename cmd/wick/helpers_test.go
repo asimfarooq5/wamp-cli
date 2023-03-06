@@ -47,13 +47,12 @@ import (
 )
 
 const (
-	testRealm       = "wick.test"
 	sessionCount    = 1000
 	testConcurrency = 100
 )
 
 func startWsServer(t *testing.T) (wsURL string) {
-	rout := testutil.NewTestRouter(t, testRealm)
+	rout := testutil.NewTestRouter(t, testutil.TestRealm)
 	// Create websocket server.
 	wss := router.NewWebsocketServer(rout)
 	mux := http.ServeMux{}
@@ -67,7 +66,7 @@ func startWsServer(t *testing.T) (wsURL string) {
 func TestSessions(t *testing.T) {
 	wsURL := startWsServer(t)
 	testClientInfo := &core.ClientInfo{
-		Realm:      testRealm,
+		Realm:      testutil.TestRealm,
 		Serializer: serialize.JSON,
 		AuthMethod: "anonymous",
 		Url:        wsURL,
@@ -80,8 +79,15 @@ func TestSessions(t *testing.T) {
 	})
 
 	t.Run("TestGetSessions", func(t *testing.T) {
-		sessions, err := main.GetSessions(testClientInfo, sessionCount, testConcurrency, 0)
-		defer func() {
+		option := &main.SessionOptions{
+			SessionCount: sessionCount,
+			Concurrency:  testConcurrency,
+			Keepalive:    0,
+		}
+
+		sessions, err := main.GetSessions(option, testClientInfo)
+		require.NoError(t, err)
+		t.Cleanup(func() {
 			wp := workerpool.New(len(sessions))
 			for _, sess := range sessions {
 				s := sess
@@ -91,8 +97,7 @@ func TestSessions(t *testing.T) {
 				})
 			}
 			wp.StopWait()
-		}()
-		require.NoError(t, err)
+		})
 		require.Equal(t, sessionCount, len(sessions))
 	})
 }

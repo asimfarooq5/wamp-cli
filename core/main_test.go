@@ -34,7 +34,6 @@ import (
 	"time"
 
 	"github.com/gammazero/nexus/v3/client"
-	"github.com/gammazero/nexus/v3/router"
 	"github.com/gammazero/nexus/v3/wamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,7 +43,6 @@ import (
 )
 
 const (
-	testRealm     = "wick.test"
 	testProcedure = "wick.test.procedure"
 	testTopic     = "wick.test.topic"
 	repeatCount   = 1000
@@ -52,29 +50,9 @@ const (
 	delay         = 1000
 )
 
-func newTestClient(t *testing.T, r router.Router) *client.Client {
-	clientConfig := &client.Config{
-		Realm: testRealm,
-	}
-	c, err := client.ConnectLocal(r, *clientConfig)
-	require.NoError(t, err)
-	t.Cleanup(func() { c.Close() })
-	return c
-}
-
-func connectedTestClients(t *testing.T) (*client.Client, *client.Client) {
-	r := testutil.NewTestRouter(t, testRealm)
-
-	c1 := newTestClient(t, r)
-
-	c2 := newTestClient(t, r)
-
-	return c1, c2
-}
-
 func TestRegisterDelay(t *testing.T) {
-	rout := testutil.NewTestRouter(t, testRealm)
-	session := newTestClient(t, rout)
+	rout := testutil.NewTestRouter(t, testutil.TestRealm)
+	session := testutil.NewTestClient(t, rout)
 
 	go func() {
 		err := core.Register(session, testProcedure, "", delay, 0, nil, false)
@@ -91,7 +69,7 @@ func TestRegisterDelay(t *testing.T) {
 
 func TestRegisterInvokeCount(t *testing.T) {
 	invokeCount := 2
-	sessionRegister, sessionCall := connectedTestClients(t)
+	sessionRegister, sessionCall := testutil.ConnectedTestClients(t)
 
 	err := core.Register(sessionRegister, testProcedure, "", 0, invokeCount, nil, false)
 	require.NoError(t, err, fmt.Sprintf("error in registering procedure: %s\n", err))
@@ -105,7 +83,7 @@ func TestRegisterInvokeCount(t *testing.T) {
 }
 
 func TestRegisterOnInvocationCmd(t *testing.T) {
-	sessionRegister, sessionCall := connectedTestClients(t)
+	sessionRegister, sessionCall := testutil.ConnectedTestClients(t)
 
 	err := core.Register(sessionRegister, testProcedure, "pwd", 0, 0, nil, false)
 	require.NoError(t, err, fmt.Sprintf("error in registering procedure: %s\n", err))
@@ -124,7 +102,7 @@ func mockStdout(t *testing.T, mockStdout *os.File) {
 }
 
 func TestCallDelayRepeatConcurrency(t *testing.T) {
-	sessionRegister, sessionCall := connectedTestClients(t)
+	sessionRegister, sessionCall := testutil.ConnectedTestClients(t)
 
 	var m sync.Mutex
 	iterator := 0
@@ -180,9 +158,9 @@ func TestCallDelayRepeatConcurrency(t *testing.T) {
 }
 
 func TestSubscribe(t *testing.T) {
-	rout := testutil.NewTestRouter(t, testRealm)
+	rout := testutil.NewTestRouter(t, testutil.TestRealm)
 
-	session := newTestClient(t, rout)
+	session := testutil.NewTestClient(t, rout)
 
 	err := core.Subscribe(session, testTopic, nil, false, false, nil)
 	require.NoError(t, err, fmt.Sprintf("error in subscribing: %s\n", err))
@@ -192,7 +170,7 @@ func TestSubscribe(t *testing.T) {
 }
 
 func TestPublishDelayRepeatConcurrency(t *testing.T) {
-	sessionSubscribe, sessionPublish := connectedTestClients(t)
+	sessionSubscribe, sessionPublish := testutil.ConnectedTestClients(t)
 
 	var m sync.Mutex
 	iterator := 0
