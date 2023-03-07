@@ -55,7 +55,7 @@ func TestRegisterDelay(t *testing.T) {
 	session := testutil.NewTestClient(t, rout)
 
 	go func() {
-		err := core.Register(session, testProcedure, "", delay, 0, nil, false)
+		err := core.Register(session, testProcedure, core.RegisterOption{Delay: delay})
 		assert.NoError(t, err, fmt.Sprintf("error in registering procedure: %s\n", err))
 	}()
 
@@ -71,7 +71,7 @@ func TestRegisterInvokeCount(t *testing.T) {
 	invokeCount := 2
 	sessionRegister, sessionCall := testutil.ConnectedTestClients(t)
 
-	err := core.Register(sessionRegister, testProcedure, "", 0, invokeCount, nil, false)
+	err := core.Register(sessionRegister, testProcedure, core.RegisterOption{InvokeCount: invokeCount})
 	require.NoError(t, err, fmt.Sprintf("error in registering procedure: %s\n", err))
 
 	for i := 0; i < invokeCount; i++ {
@@ -85,7 +85,7 @@ func TestRegisterInvokeCount(t *testing.T) {
 func TestRegisterOnInvocationCmd(t *testing.T) {
 	sessionRegister, sessionCall := testutil.ConnectedTestClients(t)
 
-	err := core.Register(sessionRegister, testProcedure, "pwd", 0, 0, nil, false)
+	err := core.Register(sessionRegister, testProcedure, core.RegisterOption{Command: "pwd"})
 	require.NoError(t, err, fmt.Sprintf("error in registering procedure: %s\n", err))
 
 	result, err := sessionCall.Call(context.Background(), testProcedure, nil, nil, nil, nil)
@@ -162,7 +162,7 @@ func TestSubscribe(t *testing.T) {
 
 	session := testutil.NewTestClient(t, rout)
 
-	err := core.Subscribe(session, testTopic, nil, false, false, nil)
+	err := core.Subscribe(session, testTopic, core.SubscribeOptions{})
 	require.NoError(t, err, fmt.Sprintf("error in subscribing: %s\n", err))
 
 	err = session.Unsubscribe(testTopic)
@@ -186,7 +186,11 @@ func TestPublishDelayRepeatConcurrency(t *testing.T) {
 
 	t.Run("TestPublishDelay", func(t *testing.T) {
 		go func() {
-			err = core.Publish(sessionPublish, testTopic, nil, nil, nil, false, 1, 1000, 1)
+			err = core.Publish(sessionPublish, testTopic, nil, nil, core.PublishOptions{
+				Repeat:      1,
+				Delay:       1000,
+				Concurrency: 1,
+			})
 			require.NoError(t, err, fmt.Sprintf("error in publishing: %s\n", err))
 		}()
 		m.Lock()
@@ -203,7 +207,10 @@ func TestPublishDelayRepeatConcurrency(t *testing.T) {
 	})
 
 	t.Run("TestPublishRepeat", func(t *testing.T) {
-		err = core.Publish(sessionPublish, testTopic, []string{"Hello", "1"}, nil, nil, false, repeatPublish, 0, 1)
+		err = core.Publish(sessionPublish, testTopic, []string{"Hello", "1"}, nil, core.PublishOptions{
+			Repeat:      repeatPublish,
+			Concurrency: 1,
+		})
 		require.NoError(t, err, fmt.Sprintf("error in publishing topic: %s\n", err))
 
 		require.Eventually(t, func() bool {

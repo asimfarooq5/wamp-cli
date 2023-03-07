@@ -92,31 +92,37 @@ func ConnectCryptoSign(clientInfo *ClientInfo, keepaliveInterval int) (*client.C
 	return connect(clientInfo.Url, *cfg)
 }
 
-func Subscribe(session *client.Client, topic string, subscribeOptions map[string]string,
-	printDetails bool, logSubscribeTime bool, eventReceived chan struct{}) error {
+type SubscribeOptions struct {
+	WAMPOptions   map[string]string
+	PrintDetails  bool
+	LogTime       bool
+	EventReceived chan struct{}
+}
+
+func Subscribe(session *client.Client, topic string, opts SubscribeOptions) error {
 	eventHandler := func(event *wamp.Event) {
-		if printDetails {
+		if opts.PrintDetails {
 			output, _ := ArgsKWArgs(event.Arguments, event.ArgumentsKw, event.Details)
 			fmt.Println(output)
 		} else {
 			output, _ := ArgsKWArgs(event.Arguments, event.ArgumentsKw, nil)
 			fmt.Println(output)
 		}
-		if eventReceived != nil {
-			eventReceived <- struct{}{}
+		if opts.EventReceived != nil {
+			opts.EventReceived <- struct{}{}
 		}
 	}
 
 	var startTime int64
-	if logSubscribeTime {
+	if opts.LogTime {
 		startTime = time.Now().UnixMilli()
 	}
 
 	// Subscribe to topic.
-	if err := session.Subscribe(topic, eventHandler, dictToWampDict(subscribeOptions)); err != nil {
+	if err := session.Subscribe(topic, eventHandler, dictToWampDict(opts.WAMPOptions)); err != nil {
 		return err
 	}
-	if logSubscribeTime {
+	if opts.LogTime {
 		endTime := time.Now().UnixMilli()
 		log.Printf("Subscribed to topic '%s' in %dms\n", topic, endTime-startTime)
 	} else {
@@ -125,33 +131,37 @@ func Subscribe(session *client.Client, topic string, subscribeOptions map[string
 	return nil
 }
 
-func actualPublish(session *client.Client, topic string, args wamp.List, kwargs wamp.Dict,
-	delayPublish int, publishOptions wamp.Dict) error {
-	if delayPublish > 0 {
-		time.Sleep(time.Duration(delayPublish) * time.Millisecond)
+func actualPublish(session *client.Client, topic string, args wamp.List, kwargs wamp.Dict, opts PublishOptions) error {
+	if opts.Delay > 0 {
+		time.Sleep(time.Duration(opts.Delay) * time.Millisecond)
 	}
 
 	// Publish to topic.
-	if err := session.Publish(topic, publishOptions, args, kwargs); err != nil {
+	if err := session.Publish(topic, dictToWampDict(opts.WAMPOptions), args, kwargs); err != nil {
 		return err
 	}
 	return nil
 }
 
-func Publish(session *client.Client, topic string, args []string, kwargs map[string]string,
-	publishOptions map[string]string, logPublishTime bool, repeatPublish int, delayPublish int,
-	concurrency int) error {
+type PublishOptions struct {
+	WAMPOptions map[string]string
+	LogTime     bool
+	Repeat      int
+	Delay       int
+	Concurrency int
+}
+
+func Publish(session *client.Client, topic string, args []string, kwargs map[string]string, opts PublishOptions) error {
 	var startTime int64
-	if logPublishTime {
+	if opts.LogTime {
 		startTime = time.Now().UnixMilli()
 	}
 
-	wp := workerpool.New(concurrency)
-	resC := make(chan error, repeatPublish)
-	for i := 0; i < repeatPublish; i++ {
+	wp := workerpool.New(opts.Concurrency)
+	resC := make(chan error, opts.Repeat)
+	for i := 0; i < opts.Repeat; i++ {
 		wp.Submit(func() {
-			err := actualPublish(session, topic, listToWampList(args), dictToWampDict(kwargs),
-				delayPublish, dictToWampDict(publishOptions))
+			err := actualPublish(session, topic, listToWampList(args), dictToWampDict(kwargs), opts)
 			resC <- err
 		})
 	}
@@ -161,35 +171,42 @@ func Publish(session *client.Client, topic string, args []string, kwargs map[str
 		return err
 	}
 
-	if logPublishTime {
+	if opts.LogTime {
 		endTime := time.Now().UnixMilli()
-		log.Printf("%d calls took %dms\n", repeatPublish, endTime-startTime)
+		log.Printf("%d calls took %dms\n", opts.Repeat, endTime-startTime)
 	}
 	return nil
 }
 
-func Register(session *client.Client, procedure string, command string, delay int, invokeCount int,
-	registerOptions map[string]string, logRegisterTime bool) error {
+type RegisterOption struct {
+	Command     string
+	Delay       int
+	InvokeCount int
+	WAMPOptions map[string]string
+	LogTime     bool
+}
+
+func Register(session *client.Client, procedure string, opts RegisterOption) error {
 
 	// If the user has called with --invoke-count
-	hasMaxInvokeCount := invokeCount > 0
+	hasMaxInvokeCount := opts.InvokeCount > 0
 
-	if delay > 0 {
-		log.Printf("procedure will be registered after %d milliseconds.\n", delay)
-		time.Sleep(time.Duration(delay) * time.Millisecond)
+	if opts.Delay > 0 {
+		log.Printf("procedure will be registered after %d milliseconds.\n", opts.Delay)
+		time.Sleep(time.Duration(opts.Delay) * time.Millisecond)
 	}
 
-	invocationHandler := registerInvocationHandler(session, procedure, command, invokeCount, hasMaxInvokeCount)
+	invocationHandler := registerInvocationHandler(session, procedure, opts.Command, opts.InvokeCount, hasMaxInvokeCount)
 
 	var startTime int64
-	if logRegisterTime {
+	if opts.LogTime {
 		startTime = time.Now().UnixMilli()
 	}
 	//Register a procedure
-	if err := session.Register(procedure, invocationHandler, dictToWampDict(registerOptions)); err != nil {
+	if err := session.Register(procedure, invocationHandler, dictToWampDict(opts.WAMPOptions)); err != nil {
 		return err
 	}
-	if logRegisterTime {
+	if opts.LogTime {
 		endTime := time.Now().UnixMilli()
 		log.Printf("Registered procedure '%s' in %dms\n", procedure, endTime-startTime)
 	} else {
@@ -289,7 +306,7 @@ func actuallyCall(session *client.Client, procedure string, args wamp.List, kwar
 }
 
 type CallOptions struct {
-	LogCallTime bool
+	LogTime     bool
 	RepeatCount int
 	DelayCall   int
 	Concurrency int
@@ -302,7 +319,7 @@ type CallOptions struct {
 
 func Call(session *client.Client, procedure string, args []string, kwargs map[string]string, opts CallOptions) error {
 	var startTime int64
-	if opts.LogCallTime {
+	if opts.LogTime {
 		startTime = time.Now().UnixMilli()
 	}
 	if opts.RepeatCount == 0 {
@@ -324,7 +341,7 @@ func Call(session *client.Client, procedure string, args []string, kwargs map[st
 		return err
 	}
 
-	if opts.LogCallTime {
+	if opts.LogTime {
 		endTime := time.Now().UnixMilli()
 		log.Printf("%d calls took %dms\n", opts.RepeatCount, endTime-startTime)
 	}

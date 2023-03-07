@@ -401,12 +401,16 @@ func main() {
 		// drain the channel
 		eventC := make(chan struct{}, len(sessions))
 		wp := workerpool.New(*c.concurrentSubscribe)
+		opts := core.SubscribeOptions{
+			WAMPOptions:   *c.subscribeOptions,
+			PrintDetails:  *c.subscribePrintDetails,
+			LogTime:       *c.logSubscribeTime,
+			EventReceived: eventC,
+		}
 		for _, session := range sessions {
 			sess := session
 			wp.Submit(func() {
-				err := core.Subscribe(sess, *c.subscribeTopic, *c.subscribeOptions,
-					*c.subscribePrintDetails, *c.logSubscribeTime, eventC)
-				if err != nil {
+				if err = core.Subscribe(sess, *c.subscribeTopic, opts); err != nil {
 					log.Fatalln(err)
 				}
 			})
@@ -460,11 +464,17 @@ func main() {
 		defer closeSessions(sessions)
 
 		wp := workerpool.New(*c.concurrentPublish)
+		opts := core.PublishOptions{
+			WAMPOptions: *c.publishOptions,
+			LogTime:     *c.logPublishTime,
+			Repeat:      *c.repeatPublish,
+			Delay:       *c.delayPublish,
+			Concurrency: *c.concurrentPublish,
+		}
 		for _, session := range sessions {
 			sess := session
 			wp.Submit(func() {
-				if err = core.Publish(sess, *c.publishTopic, *c.publishArgs, *c.publishKeywordArgs, *c.publishOptions,
-					*c.logPublishTime, *c.repeatPublish, *c.delayPublish, *c.concurrentPublish); err != nil {
+				if err = core.Publish(sess, *c.publishTopic, *c.publishArgs, *c.publishKeywordArgs, opts); err != nil {
 					log.Fatalln(err)
 				}
 			})
@@ -502,17 +512,17 @@ func main() {
 		}()
 
 		wp := workerpool.New(*c.concurrentRegister)
+		opts := core.RegisterOption{
+			Command:     *c.onInvocationCmd,
+			Delay:       *c.delay,
+			InvokeCount: *c.invokeCount,
+			WAMPOptions: *c.registerOptions,
+			LogTime:     *c.logRegisterTime,
+		}
 		for _, session := range sessions {
 			sess := session
 			wp.Submit(func() {
-				if err = core.Register(
-					sess,
-					*c.registerProcedure,
-					*c.onInvocationCmd,
-					*c.delay,
-					*c.invokeCount,
-					*c.registerOptions,
-					*c.logRegisterTime); err != nil {
+				if err = core.Register(sess, *c.registerProcedure, opts); err != nil {
 					log.Fatalln(err)
 				}
 			})
@@ -556,7 +566,7 @@ func main() {
 			sess := session
 			wp.Submit(func() {
 				opts := core.CallOptions{
-					LogCallTime: *c.logCallTime,
+					LogTime:     *c.logCallTime,
 					RepeatCount: *c.repeatCount,
 					DelayCall:   *c.delayCall,
 					Concurrency: *c.concurrentCalls,
