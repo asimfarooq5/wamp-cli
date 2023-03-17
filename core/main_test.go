@@ -27,6 +27,7 @@ package core_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"syscall"
@@ -101,6 +102,21 @@ func mockStdout(t *testing.T, mockStdout *os.File) {
 	os.Stdout = mockStdout
 }
 
+func checkOutput(t *testing.T, session *client.Client, args []string, kwargs map[string]string, expectedOutput string) {
+	rescueStdout := os.Stdout
+	r, w, err := os.Pipe()
+	assert.NoError(t, err)
+	os.Stdout = w
+
+	err = core.Call(session, testProcedure, args, kwargs, core.CallOptions{})
+	require.NoError(t, err)
+	w.Close()
+	out, err := io.ReadAll(r)
+	assert.NoError(t, err)
+	os.Stdout = rescueStdout
+	assert.Equal(t, expectedOutput, string(out))
+}
+
 func TestCallDelayRepeatConcurrency(t *testing.T) {
 	sessionRegister, sessionCall := testutil.ConnectedTestClients(t)
 
@@ -110,7 +126,7 @@ func TestCallDelayRepeatConcurrency(t *testing.T) {
 		m.Lock()
 		iterator++
 		m.Unlock()
-		return client.InvokeResult{Args: wamp.List{wamp.Dict{"foo": "bar"}}}
+		return client.InvokeResult{Args: inv.Arguments, Kwargs: inv.ArgumentsKw}
 	}
 
 	err := sessionRegister.Register(testProcedure, invocationHandler, nil)
@@ -155,6 +171,44 @@ func TestCallDelayRepeatConcurrency(t *testing.T) {
 		}, 1*time.Second, 50*time.Millisecond)
 	})
 
+	t.Run("TestBackwardsCompatibility", func(t *testing.T) {
+		// output with args only
+		checkOutput(t, sessionCall, []string{"Hello", "1"}, nil, `[
+    "Hello",
+    1
+]
+
+`)
+		// output with kwargs only
+		checkOutput(t, sessionCall, nil, map[string]string{
+			"foo": "bar",
+			"num": "1",
+		}, `kwargs:
+{
+    "foo": "bar",
+    "num": 1
+}
+
+`)
+		// output with args and kwargs
+		checkOutput(t, sessionCall, []string{"Hello", "1"}, map[string]string{
+			"foo": "bar",
+			"num": "1",
+		}, `args:
+[
+    "Hello",
+    1
+]
+kwargs:
+{
+    "foo": "bar",
+    "num": 1
+}
+
+`)
+		// output with no args and kwargs
+		checkOutput(t, sessionCall, nil, nil, "\n")
+	})
 }
 
 func TestSubscribe(t *testing.T) {
