@@ -129,7 +129,7 @@ type cmd struct {
 }
 
 func parseCmd() (*cmd, string) {
-	joinCommand := kingpin.Command("join-only", "Start wamp session.")
+	joinCommand := kingpin.Command("join", "Start wamp session.")
 	subscribeCommand := kingpin.Command("subscribe", "Subscribe a topic.")
 	publishCommand := kingpin.Command("publish", "Publish to a topic.")
 	registerCommand := kingpin.Command("register", "Register a procedure.")
