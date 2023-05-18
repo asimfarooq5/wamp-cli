@@ -166,7 +166,6 @@ func Publish(session *client.Client, topic string, args []string, kwargs map[str
 		})
 	}
 	wp.StopWait()
-	close(resC)
 	if err := util.ErrorFromErrorChannel(resC); err != nil {
 		return err
 	}
@@ -336,7 +335,6 @@ func Call(session *client.Client, procedure string, args []string, kwargs map[st
 		})
 	}
 	wp.StopWait()
-	close(resC)
 	if err := util.ErrorFromErrorChannel(resC); err != nil {
 		return err
 	}

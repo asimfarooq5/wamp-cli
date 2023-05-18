@@ -523,7 +523,6 @@ func (opt *SessionOptions) getSessions(clientInfo *core.ClientInfo) (sessions []
 	}
 
 	wp.StopWait()
-	close(resC)
 	if err = util.ErrorFromErrorChannel(resC); err != nil {
 		return nil, err
 	}

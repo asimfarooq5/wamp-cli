@@ -6,10 +6,12 @@ import (
 )
 
 func ErrorFromErrorChannel(resC chan error) error {
+	close(resC)
 	var errs []string
 	for err := range resC {
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("- %v", err))
+			errTxt := strings.TrimPrefix(err.Error(), "got error[s]:\n- ")
+			errs = append(errs, fmt.Sprintf("- %v", errTxt))
 		}
 	}
 	if len(errs) != 0 {

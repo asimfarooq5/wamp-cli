@@ -42,7 +42,8 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/s-things/wick/core" // nolint:gci
+	"github.com/s-things/wick/core"
+	"github.com/s-things/wick/internal/util" // nolint:gci
 )
 
 var (
@@ -53,6 +54,8 @@ var (
 const ownerReadWritePermission = 0600
 
 type cmd struct {
+	parsed string
+
 	url        *string
 	realm      *string
 	authMethod *string
@@ -128,39 +131,42 @@ type cmd struct {
 	runTasksFile *string
 }
 
-func parseCmd() (*cmd, string) {
-	joinCommand := kingpin.Command("join", "Start wamp session.")
-	subscribeCommand := kingpin.Command("subscribe", "Subscribe a topic.")
-	publishCommand := kingpin.Command("publish", "Publish to a topic.")
-	registerCommand := kingpin.Command("register", "Register a procedure.")
-	callCommand := kingpin.Command("call", "Call a procedure.")
-	keyGenCommand := kingpin.Command("keygen", "Generate a WAMP cryptosign ed25519 keypair.")
+func parseCmd(args []string) (*cmd, error) {
+	app := kingpin.New(os.Args[0], "")
+	app.Version(versionString).VersionFlag.Short('v')
 
-	composeCommand := kingpin.Command("compose", "")
+	joinCommand := app.Command("join", "Start wamp session.")
+	subscribeCommand := app.Command("subscribe", "Subscribe a topic.")
+	publishCommand := app.Command("publish", "Publish to a topic.")
+	registerCommand := app.Command("register", "Register a procedure.")
+	callCommand := app.Command("call", "Call a procedure.")
+	keyGenCommand := app.Command("keygen", "Generate a WAMP cryptosign ed25519 keypair.")
+
+	composeCommand := app.Command("compose", "")
 	runCommand := composeCommand.Command("run", "Execute tasks from 'wick.yml' file.")
 
 	c := &cmd{
-		url: kingpin.Flag("url", "WAMP URL to connect to.").
+		url: app.Flag("url", "WAMP URL to connect to.").
 			Default("ws://localhost:8080/ws").Envar("WICK_URL").String(),
-		realm: kingpin.Flag("realm", "The WAMP realm to join.").Default("realm1").
+		realm: app.Flag("realm", "The WAMP realm to join.").Default("realm1").
 			Envar("WICK_REALM").String(),
-		authMethod: kingpin.Flag("authmethod", "The authentication method to use.").Envar("WICK_AUTHMETHOD").
+		authMethod: app.Flag("authmethod", "The authentication method to use.").Envar("WICK_AUTHMETHOD").
 			Default("anonymous").Enum("anonymous", "ticket", "wampcra", "cryptosign"),
-		authid: kingpin.Flag("authid", "The authid to use, if authenticating.").
+		authid: app.Flag("authid", "The authid to use, if authenticating.").
 			Envar("WICK_AUTHID").String(),
-		authrole: kingpin.Flag("authrole", "The authrole to use, if authenticating.").
+		authrole: app.Flag("authrole", "The authrole to use, if authenticating.").
 			Envar("WICK_AUTHROLE").String(),
-		secret: kingpin.Flag("secret", "The secret to use in Challenge-Response Auth.").
+		secret: app.Flag("secret", "The secret to use in Challenge-Response Auth.").
 			Envar("WICK_SECRET").String(),
-		privateKey: kingpin.Flag("private-key", "The ed25519 private key hex for cryptosign.").
+		privateKey: app.Flag("private-key", "The ed25519 private key hex for cryptosign.").
 			Envar("WICK_PRIVATE_KEY").String(),
-		ticket: kingpin.Flag("ticket", "The ticket when using ticket authentication.").
+		ticket: app.Flag("ticket", "The ticket when using ticket authentication.").
 			Envar("WICK_TICKET").String(),
-		serializer: kingpin.Flag("serializer", "The serializer to use.").Envar("WICK_SERIALIZER").
+		serializer: app.Flag("serializer", "The serializer to use.").Envar("WICK_SERIALIZER").
 			Default("json").Enum("json", "msgpack", "cbor"),
-		profile: kingpin.Flag("profile", "Get details from in '$HOME/.wick/config'.For default section use 'DEFAULT'.").
+		profile: app.Flag("profile", "Get details from in '$HOME/.wick/config'.For default section use 'DEFAULT'.").
 			Envar("WICK_PROFILE").String(),
-		debug: kingpin.Flag("debug", "Enable debug logging.").Bool(),
+		debug: app.Flag("debug", "Enable debug logging.").Bool(),
 
 		join:             joinCommand,
 		joinSessionCount: joinCommand.Flag("parallel", "Join requested number of wamp sessions.").Default("1").Int(),
@@ -249,7 +255,7 @@ a string, send value in quotes e.g."'1'" or '"true"'. (May be provided multiple 
 		keyGen:           keyGenCommand,
 		keyGenSaveToFile: keyGenCommand.Flag("output-file", "Write keypair to file.").Short('O').Bool(),
 
-		configure: kingpin.Command("configure", "Configure profiles."),
+		configure: app.Command("configure", "Configure profiles."),
 
 		compose:     composeCommand,
 		initCommand: composeCommand.Command("init", "Initialize basic config"),
@@ -257,7 +263,13 @@ a string, send value in quotes e.g."'1'" or '"true"'. (May be provided multiple 
 		runTasksFile: runCommand.Flag("file-path", "Enter the file path to execute.").Short('f').
 			Default("wick.yaml").String(),
 	}
-	return c, kingpin.Parse()
+	parsed, err := app.Parse(args)
+	if err != nil {
+		return nil, err
+	}
+	c.parsed = parsed
+
+	return c, nil
 }
 
 func sessionsDone(sessions []*client.Client, allSessionDoneC chan struct{}) {
@@ -293,20 +305,22 @@ func closeSessions(sessions []*client.Client) {
 
 const versionString = "0.6.0"
 
-func main() {
-	kingpin.Version(versionString).VersionFlag.Short('v')
-	c, selectedCommand := parseCmd()
+func run(args []string) error {
+	c, err := parseCmd(args)
+	if err != nil {
+		return err
+	}
 
 	if *c.debug {
 		log.SetLevel(log.DebugLevel)
 	}
 
 	if *c.privateKey != "" && *c.ticket != "" {
-		log.Fatal("Provide only one of private key, ticket or secret")
+		return fmt.Errorf("provide only one of private key, ticket or secret")
 	} else if *c.ticket != "" && *c.secret != "" {
-		log.Fatal("Provide only one of private key, ticket or secret")
+		return fmt.Errorf("provide only one of private key, ticket or secret")
 	} else if *c.privateKey != "" && *c.secret != "" {
-		log.Fatal("Provide only one of private key, ticket or secret")
+		return fmt.Errorf("provide only one of private key, ticket or secret")
 	}
 
 	// auto decide authmethod if user didn't explicitly request
@@ -315,12 +329,11 @@ func main() {
 	}
 
 	var clientInfo *core.ClientInfo
-	var err error
 	var filePath = os.ExpandEnv("$HOME/.wick/config")
-	if *c.profile != "" && selectedCommand != c.configure.FullCommand() {
+	if *c.profile != "" && c.parsed != c.configure.FullCommand() {
 		clientInfo, err = readFromProfile(*c.profile, filePath)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 	} else {
 		clientInfo = &core.ClientInfo{
@@ -336,7 +349,7 @@ func main() {
 		}
 	}
 
-	switch selectedCommand {
+	switch c.parsed {
 	case c.join.FullCommand():
 		sessionOptions := &SessionOptions{
 			SessionCount: *c.joinSessionCount,
@@ -345,11 +358,11 @@ func main() {
 			LogTime:      *c.logJoinTime,
 		}
 		if err = sessionOptions.validate(); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		defer closeSessions(sessions)
@@ -372,15 +385,15 @@ func main() {
 			LogTime:      *c.logSubscribeTime,
 		}
 		if err = sessionOptions.validate(); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 		if *c.subscribeEventCount < 0 {
-			log.Fatalln("event count must be greater than zero")
+			return fmt.Errorf("event count must be greater than zero")
 		}
 
 		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		defer func() {
@@ -407,15 +420,19 @@ func main() {
 			LogTime:       *c.logSubscribeTime,
 			EventReceived: eventC,
 		}
+		errC := make(chan error, len(sessions))
 		for _, session := range sessions {
 			sess := session
 			wp.Submit(func() {
 				if err = core.Subscribe(sess, *c.subscribeTopic, opts); err != nil {
-					log.Fatalln(err)
+					errC <- err
 				}
 			})
 		}
 		wp.StopWait()
+		if err = util.ErrorFromErrorChannel(errC); err != nil {
+			return err
+		}
 
 		allSessionsDoneC := make(chan struct{}, len(sessions))
 		go sessionsDone(sessions, allSessionsDoneC)
@@ -433,12 +450,12 @@ func main() {
 					// goroutines possibly trying to send to
 					// event channel but nothing is
 					// receiving from it
-					return
+					return nil
 				}
 			case <-sigChan:
-				return
+				return nil
 			case <-allSessionsDoneC:
-				return
+				return nil
 			}
 		}
 
@@ -450,15 +467,15 @@ func main() {
 			LogTime:      *c.logPublishTime,
 		}
 		if err = sessionOptions.validate(); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		if *c.repeatPublish < 1 {
-			log.Fatalln("repeat count must be greater than zero")
+			return fmt.Errorf("repeat count must be greater than zero")
 		}
 		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		defer closeSessions(sessions)
@@ -471,15 +488,19 @@ func main() {
 			Delay:       *c.delayPublish,
 			Concurrency: *c.concurrentPublish,
 		}
+		errC := make(chan error, len(sessions))
 		for _, session := range sessions {
 			sess := session
 			wp.Submit(func() {
 				if err = core.Publish(sess, *c.publishTopic, *c.publishArgs, *c.publishKeywordArgs, opts); err != nil {
-					log.Fatalln(err)
+					errC <- err
 				}
 			})
 		}
 		wp.StopWait()
+		if err = util.ErrorFromErrorChannel(errC); err != nil {
+			return err
+		}
 
 	case c.register.FullCommand():
 		sessionOptions := &SessionOptions{
@@ -489,12 +510,12 @@ func main() {
 			LogTime:      *c.logRegisterTime,
 		}
 		if err = sessionOptions.validate(); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		defer func() {
@@ -519,15 +540,19 @@ func main() {
 			WAMPOptions: *c.registerOptions,
 			LogTime:     *c.logRegisterTime,
 		}
+		errC := make(chan error, len(sessions))
 		for _, session := range sessions {
 			sess := session
 			wp.Submit(func() {
 				if err = core.Register(sess, *c.registerProcedure, opts); err != nil {
-					log.Fatalln(err)
+					errC <- err
 				}
 			})
 		}
 		wp.StopWait()
+		if err = util.ErrorFromErrorChannel(errC); err != nil {
+			return err
+		}
 
 		// Wait for CTRL-c or client close while handling events.
 		sigChan := make(chan os.Signal, 1)
@@ -547,21 +572,22 @@ func main() {
 			LogTime:      *c.logCallTime,
 		}
 		if err = sessionOptions.validate(); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		if *c.repeatCount < 1 {
-			log.Fatalln("repeat count must be greater than zero")
+			return fmt.Errorf("repeat count must be greater than zero")
 		}
 
 		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		defer closeSessions(sessions)
 
 		wp := workerpool.New(*c.concurrentCalls)
+		errC := make(chan error, len(sessions))
 		for _, session := range sessions {
 			sess := session
 			wp.Submit(func() {
@@ -577,27 +603,30 @@ func main() {
 					opts.RawArgOutIndex = *c.callRawOutArg
 				}
 				if err = core.Call(sess, *c.callProcedure, *c.callArgs, *c.callKeywordArgs, opts); err != nil {
-					log.Fatalln(err)
+					errC <- err
 				}
 			})
 		}
 		wp.StopWait()
+		if err = util.ErrorFromErrorChannel(errC); err != nil {
+			return err
+		}
 
 	case c.keyGen.FullCommand():
 		pub, pri, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 		publicString := hex.EncodeToString(pub)
 		privateString := hex.EncodeToString(pri.Seed())
 		if *c.keyGenSaveToFile {
 			err = ioutil.WriteFile("key", []byte(privateString), os.ModePerm)
 			if err != nil {
-				log.Fatalln(err)
+				return err
 			}
 			err = ioutil.WriteFile("key.pub", []byte(publicString), os.ModePerm)
 			if err != nil {
-				log.Fatalln(err)
+				return err
 			}
 		} else {
 			fmt.Printf("Public Key: %s\nPrivate Key: %s\n", publicString, privateString)
@@ -613,59 +642,66 @@ func main() {
 				ValidateFunc: nil,
 			})
 			if err != nil {
-				log.Fatalln(err)
+				return err
 			}
 			*c.profile = profile
 		}
 		clientInfo, *c.serializer, err = getInputFromUser(*c.serializer, clientInfo)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 		if err = writeProfile(*c.profile, *c.serializer, filePath, clientInfo); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 	case c.runCommand.FullCommand():
 		yamlFile, err := os.ReadFile(*c.runTasksFile)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		// FIXME: find way to unmarshal into different struct based upon type
 		var compose Compose
 		err = yaml.Unmarshal(yamlFile, &compose)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 		producerSession, err := connect(clientInfo, 0)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 		defer producerSession.Close()
 
 		consumerSession, err := connect(clientInfo, 0)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 		defer consumerSession.Close()
 
 		if err = executeTasks(compose, producerSession, consumerSession); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 
 	case c.initCommand.FullCommand():
 		info, err := os.Stat("wick.yaml")
 		if err == nil {
 			log.Printf("file %s already exists", info.Name())
-			return
+			return nil
 		}
 		if !errors.Is(err, os.ErrNotExist) {
-			log.Fatalln(err)
+			return err
 		}
 
 		if err = os.WriteFile("wick.yaml", sampleConfig, ownerReadWritePermission); err != nil {
-			log.Fatalf("unable to write config: %v", err)
+			return fmt.Errorf("unable to write config: %w", err)
 		}
+	}
+	return nil
+}
+
+func main() {
+	if err := run(os.Args[1:]); err != nil {
+		log.Fatalln(err)
 	}
 }
