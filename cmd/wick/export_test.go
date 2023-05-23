@@ -24,7 +24,16 @@
 
 package main
 
+import (
+	"testing"
+
+	"github.com/gammazero/nexus/v3/client"
+
+	"github.com/s-things/wick/core"
+)
+
 var (
+	Run                 = run
 	Connect             = connect
 	GetSessions         = (*SessionOptions).getSessions
 	GetSerializerByName = getSerializerByName
@@ -58,3 +67,9 @@ type (
 	InputOption = inputOptions
 	ArgsKwargs  = argsKwargs
 )
+
+func MockConnectSession(t *testing.T, m func(clientInfo *core.ClientInfo, keepalive int) (*client.Client, error)) {
+	old := connectSession
+	connectSession = m
+	t.Cleanup(func() { connectSession = old })
+}

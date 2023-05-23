@@ -51,8 +51,7 @@ const (
 	testConcurrency = 100
 )
 
-func startWsServer(t *testing.T) (wsURL string) {
-	rout := testutil.NewTestRouter(t, testutil.TestRealm)
+func startWsServer(t *testing.T, rout router.Router) (wsURL string) {
 	// Create websocket server.
 	wss := router.NewWebsocketServer(rout)
 	mux := http.ServeMux{}
@@ -64,7 +63,8 @@ func startWsServer(t *testing.T) (wsURL string) {
 }
 
 func TestSessions(t *testing.T) {
-	wsURL := startWsServer(t)
+	rout := testutil.NewTestRouter(t, testutil.TestRealm)
+	wsURL := startWsServer(t, rout)
 	testClientInfo := &core.ClientInfo{
 		Realm:      testutil.TestRealm,
 		Serializer: serialize.JSON,

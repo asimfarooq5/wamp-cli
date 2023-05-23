@@ -25,6 +25,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/ed25519"
 	"crypto/rand"
 	_ "embed" // nolint:gci
@@ -34,6 +35,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/gammazero/nexus/v3/client"
 	"github.com/gammazero/nexus/v3/wamp"
@@ -68,11 +70,12 @@ type cmd struct {
 	profile    *string
 	debug      *bool
 
-	join             *kingpin.CmdClause
-	joinSessionCount *int
-	concurrentJoin   *int
-	logJoinTime      *bool
-	keepaliveJoin    *int
+	join               *kingpin.CmdClause
+	joinSessionCount   *int
+	concurrentJoin     *int
+	logJoinTime        *bool
+	keepaliveJoin      *int
+	joinNonInteractive *bool
 
 	subscribe             *kingpin.CmdClause
 	subscribeTopic        *string
@@ -172,8 +175,9 @@ func parseCmd(args []string) (*cmd, error) {
 		joinSessionCount: joinCommand.Flag("parallel", "Join requested number of wamp sessions.").Default("1").Int(),
 		concurrentJoin: joinCommand.Flag("concurrency", "Join wamp session concurrently. "+
 			"Only effective when called with --parallel.").Default("1").Int(),
-		logJoinTime:   joinCommand.Flag("time", "Log session join time").Bool(),
-		keepaliveJoin: joinCommand.Flag("keepalive", "Interval between websocket pings.").Default("0").Int(),
+		logJoinTime:        joinCommand.Flag("time", "Log session join time").Bool(),
+		keepaliveJoin:      joinCommand.Flag("keepalive", "Interval between websocket pings.").Default("0").Int(),
+		joinNonInteractive: joinCommand.Flag("non-interactive", "Join non interactive").Bool(),
 
 		subscribe:      subscribeCommand,
 		subscribeTopic: subscribeCommand.Arg("topic", "Topic to subscribe.").Required().String(),
@@ -303,6 +307,114 @@ func closeSessions(sessions []*client.Client) {
 	wp.StopWait()
 }
 
+func callProcedure(c *cmd, sessions []*client.Client) error {
+	wp := workerpool.New(*c.concurrentCalls)
+	errC := make(chan error, len(sessions))
+	for _, session := range sessions {
+		sess := session
+		wp.Submit(func() {
+			opts := core.CallOptions{
+				LogTime:     *c.logCallTime,
+				RepeatCount: *c.repeatCount,
+				DelayCall:   *c.delayCall,
+				Concurrency: *c.concurrentCalls,
+				WAMPOptions: *c.callOptions,
+			}
+			if *c.callRawOutArg != -1 {
+				opts.RawArgOut = true
+				opts.RawArgOutIndex = *c.callRawOutArg
+			}
+			if err := core.Call(sess, *c.callProcedure, *c.callArgs, *c.callKeywordArgs, opts); err != nil {
+				errC <- err
+			}
+		})
+	}
+	wp.StopWait()
+
+	return util.ErrorFromErrorChannel(errC)
+}
+
+func registerProcedure(c *cmd, sessions []*client.Client) error {
+	wp := workerpool.New(*c.concurrentRegister)
+	opts := core.RegisterOption{
+		Command:     *c.onInvocationCmd,
+		Delay:       *c.delay,
+		InvokeCount: *c.invokeCount,
+		WAMPOptions: *c.registerOptions,
+		LogTime:     *c.logRegisterTime,
+	}
+	errC := make(chan error, len(sessions))
+	for _, session := range sessions {
+		sess := session
+		wp.Submit(func() {
+			if err := core.Register(sess, *c.registerProcedure, opts); err != nil {
+				errC <- err
+			}
+		})
+	}
+	wp.StopWait()
+
+	return util.ErrorFromErrorChannel(errC)
+}
+
+func unregisterProcedure(sessions []*client.Client, procedure string) {
+	wp := workerpool.New(len(sessions))
+	for _, sess := range sessions {
+		s := sess
+		wp.Submit(func() {
+			// Unregister procedure
+			_ = s.Unregister(procedure)
+		})
+	}
+	wp.StopWait()
+}
+
+func startREPL(sessions []*client.Client) {
+	reader := bufio.NewScanner(os.Stdin)
+	fmt.Print("wick> ")
+	for reader.Scan() {
+		text := reader.Text()
+		if strings.TrimSpace(text) == "exit" {
+			closeSessions(sessions)
+		}
+		a := strings.Fields(text)
+		if len(a) == 0 {
+			fmt.Print("wick> ")
+			continue
+		}
+		command, err := parseCmd(a)
+		if err != nil {
+			log.Errorln(err)
+			fmt.Print("wick> ")
+			continue
+		}
+		switch command.parsed {
+		case command.call.FullCommand():
+			if err = callProcedure(command, sessions); err != nil {
+				log.Errorln(err)
+			}
+
+		case command.register.FullCommand():
+			if err = registerProcedure(command, sessions); err != nil {
+				log.Errorln(err)
+				fmt.Print("wick> ")
+				continue
+			}
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, os.Interrupt)
+			<-sigChan
+			unregisterProcedure(sessions, *command.registerProcedure)
+
+		default:
+			log.Errorln("unsupported command: expected one of 'register', 'call', 'subscribe' and 'publish'")
+		}
+		fmt.Print("wick> ")
+	}
+	// Close all sessions if we encountered an EOF character
+	closeSessions(sessions)
+	fmt.Println()
+}
+
 const versionString = "0.6.0"
 
 func run(args []string) error {
@@ -360,21 +472,36 @@ func run(args []string) error {
 		if err = sessionOptions.validate(); err != nil {
 			return err
 		}
+		if !*c.joinNonInteractive {
+			if *c.joinSessionCount != 1 {
+				return fmt.Errorf("parallel is allowed for non-interactive join only")
+			}
+			if *c.concurrentJoin != 1 {
+				return fmt.Errorf("concurrency is allowed for non-interactive join only")
+			}
+			if *c.logJoinTime {
+				return fmt.Errorf("time is allowed for non-interactive join only")
+			}
+		}
 		sessions, err := sessionOptions.getSessions(clientInfo)
 		if err != nil {
 			return err
 		}
-
 		defer closeSessions(sessions)
 
-		// Wait for CTRL-c or client close while handling events.
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, os.Interrupt)
 		allSessionsDoneC := make(chan struct{}, len(sessions))
 		go sessionsDone(sessions, allSessionsDoneC)
-		select {
-		case <-sigChan:
-		case <-allSessionsDoneC:
+
+		if !*c.joinNonInteractive {
+			go startREPL(sessions)
+			<-allSessionsDoneC
+		} else {
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, os.Interrupt)
+			select {
+			case <-sigChan:
+			case <-allSessionsDoneC:
+			}
 		}
 
 	case c.subscribe.FullCommand():
@@ -517,42 +644,12 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
+		defer closeSessions(sessions)
 
-		defer func() {
-			wp := workerpool.New(len(sessions))
-			for _, sess := range sessions {
-				s := sess
-				wp.Submit(func() {
-					// Unregister procedure
-					_ = s.Unregister(*c.registerProcedure)
-					// Close the connection to the router
-					_ = s.Close()
-				})
-			}
-			wp.StopWait()
-		}()
-
-		wp := workerpool.New(*c.concurrentRegister)
-		opts := core.RegisterOption{
-			Command:     *c.onInvocationCmd,
-			Delay:       *c.delay,
-			InvokeCount: *c.invokeCount,
-			WAMPOptions: *c.registerOptions,
-			LogTime:     *c.logRegisterTime,
-		}
-		errC := make(chan error, len(sessions))
-		for _, session := range sessions {
-			sess := session
-			wp.Submit(func() {
-				if err = core.Register(sess, *c.registerProcedure, opts); err != nil {
-					errC <- err
-				}
-			})
-		}
-		wp.StopWait()
-		if err = util.ErrorFromErrorChannel(errC); err != nil {
+		if err = registerProcedure(c, sessions); err != nil {
 			return err
 		}
+		defer unregisterProcedure(sessions, *c.registerProcedure)
 
 		// Wait for CTRL-c or client close while handling events.
 		sigChan := make(chan os.Signal, 1)
@@ -586,29 +683,7 @@ func run(args []string) error {
 
 		defer closeSessions(sessions)
 
-		wp := workerpool.New(*c.concurrentCalls)
-		errC := make(chan error, len(sessions))
-		for _, session := range sessions {
-			sess := session
-			wp.Submit(func() {
-				opts := core.CallOptions{
-					LogTime:     *c.logCallTime,
-					RepeatCount: *c.repeatCount,
-					DelayCall:   *c.delayCall,
-					Concurrency: *c.concurrentCalls,
-					WAMPOptions: *c.callOptions,
-				}
-				if *c.callRawOutArg != -1 {
-					opts.RawArgOut = true
-					opts.RawArgOutIndex = *c.callRawOutArg
-				}
-				if err = core.Call(sess, *c.callProcedure, *c.callArgs, *c.callKeywordArgs, opts); err != nil {
-					errC <- err
-				}
-			})
-		}
-		wp.StopWait()
-		if err = util.ErrorFromErrorChannel(errC); err != nil {
+		if err = callProcedure(c, sessions); err != nil {
 			return err
 		}
 

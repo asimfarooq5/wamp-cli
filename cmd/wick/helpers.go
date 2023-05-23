@@ -60,6 +60,8 @@ const (
 	readExecutePermission = 0755
 )
 
+var connectSession = connect // nolint:gochecknoglobals
+
 func getSerializerByName(name string) serialize.Serialization {
 	switch name {
 	case jsonSerializer:
@@ -514,7 +516,7 @@ func (opt *SessionOptions) getSessions(clientInfo *core.ClientInfo) (sessions []
 	}
 	for i := 0; i < opt.SessionCount; i++ {
 		wp.Submit(func() {
-			session, errC := connect(clientInfo, opt.Keepalive)
+			session, errC := connectSession(clientInfo, opt.Keepalive)
 			opt.Lock()
 			sessions = append(sessions, session)
 			opt.Unlock()
