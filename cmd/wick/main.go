@@ -369,6 +369,62 @@ func unregisterProcedure(sessions []*client.Client, procedure string) {
 	wp.StopWait()
 }
 
+func publishTopic(c *cmd, sessions []*client.Client) error {
+	wp := workerpool.New(*c.concurrentPublish)
+	opts := core.PublishOptions{
+		WAMPOptions: *c.publishOptions,
+		LogTime:     *c.logPublishTime,
+		Repeat:      *c.repeatPublish,
+		Delay:       *c.delayPublish,
+		Concurrency: *c.concurrentPublish,
+	}
+	errC := make(chan error, len(sessions))
+	for _, session := range sessions {
+		sess := session
+		wp.Submit(func() {
+			if err := core.Publish(sess, *c.publishTopic, *c.publishArgs, *c.publishKeywordArgs, opts); err != nil {
+				errC <- err
+			}
+		})
+	}
+	wp.StopWait()
+
+	return util.ErrorFromErrorChannel(errC)
+}
+
+func subscribeTopic(c *cmd, sessions []*client.Client, eventC chan struct{}) error {
+	wp := workerpool.New(*c.concurrentSubscribe)
+	opts := core.SubscribeOptions{
+		WAMPOptions:   *c.subscribeOptions,
+		PrintDetails:  *c.subscribePrintDetails,
+		LogTime:       *c.logSubscribeTime,
+		EventReceived: eventC,
+	}
+	errC := make(chan error, len(sessions))
+	for _, session := range sessions {
+		sess := session
+		wp.Submit(func() {
+			if err := core.Subscribe(sess, *c.subscribeTopic, opts); err != nil {
+				errC <- err
+			}
+		})
+	}
+	wp.StopWait()
+	return util.ErrorFromErrorChannel(errC)
+}
+
+func unsubscribeTopic(sessions []*client.Client, topic string) {
+	wp := workerpool.New(len(sessions))
+	for _, sess := range sessions {
+		s := sess
+		wp.Submit(func() {
+			// Unsubscribe from topic.
+			_ = s.Unsubscribe(topic)
+		})
+	}
+	wp.StopWait()
+}
+
 func startREPL(sessions []*client.Client) {
 	reader := bufio.NewScanner(os.Stdin)
 	fmt.Print("wick> ")
@@ -404,6 +460,41 @@ func startREPL(sessions []*client.Client) {
 			signal.Notify(sigChan, os.Interrupt)
 			<-sigChan
 			unregisterProcedure(sessions, *command.registerProcedure)
+
+		case command.publish.FullCommand():
+			if err = publishTopic(command, sessions); err != nil {
+				log.Errorln(err)
+			}
+
+		case command.subscribe.FullCommand():
+			// buffer to match the number of sessions, otherwise we'd have to
+			// drain the channel
+			eventC := make(chan struct{}, len(sessions))
+			if err = subscribeTopic(command, sessions, eventC); err != nil {
+				log.Errorln(err)
+				fmt.Print("wick> ")
+				continue
+			}
+
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, os.Interrupt)
+			events := 0
+			exit := false
+			for {
+				select {
+				case <-eventC:
+					events++
+					if *command.subscribeEventCount > 0 && events == *command.subscribeEventCount {
+						exit = true
+					}
+				case <-sigChan:
+					exit = true
+				}
+				if exit {
+					break
+				}
+			}
+			unsubscribeTopic(sessions, *command.subscribeTopic)
 
 		default:
 			log.Errorln("unsupported command: expected one of 'register', 'call', 'subscribe' and 'publish'")
@@ -522,44 +613,15 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-
-		defer func() {
-			wp := workerpool.New(len(sessions))
-			for _, sess := range sessions {
-				s := sess
-				wp.Submit(func() {
-					// Unsubscribe from topic.
-					_ = s.Unsubscribe(*c.subscribeTopic)
-					// Close the connection to the router
-					_ = s.Close()
-				})
-			}
-			wp.StopWait()
-		}()
+		defer closeSessions(sessions)
 
 		// buffer to match the number of sessions, otherwise we'd have to
 		// drain the channel
 		eventC := make(chan struct{}, len(sessions))
-		wp := workerpool.New(*c.concurrentSubscribe)
-		opts := core.SubscribeOptions{
-			WAMPOptions:   *c.subscribeOptions,
-			PrintDetails:  *c.subscribePrintDetails,
-			LogTime:       *c.logSubscribeTime,
-			EventReceived: eventC,
-		}
-		errC := make(chan error, len(sessions))
-		for _, session := range sessions {
-			sess := session
-			wp.Submit(func() {
-				if err = core.Subscribe(sess, *c.subscribeTopic, opts); err != nil {
-					errC <- err
-				}
-			})
-		}
-		wp.StopWait()
-		if err = util.ErrorFromErrorChannel(errC); err != nil {
+		if err = subscribeTopic(c, sessions, eventC); err != nil {
 			return err
 		}
+		defer unsubscribeTopic(sessions, *c.subscribeTopic)
 
 		allSessionsDoneC := make(chan struct{}, len(sessions))
 		go sessionsDone(sessions, allSessionsDoneC)
@@ -607,25 +669,7 @@ func run(args []string) error {
 
 		defer closeSessions(sessions)
 
-		wp := workerpool.New(*c.concurrentPublish)
-		opts := core.PublishOptions{
-			WAMPOptions: *c.publishOptions,
-			LogTime:     *c.logPublishTime,
-			Repeat:      *c.repeatPublish,
-			Delay:       *c.delayPublish,
-			Concurrency: *c.concurrentPublish,
-		}
-		errC := make(chan error, len(sessions))
-		for _, session := range sessions {
-			sess := session
-			wp.Submit(func() {
-				if err = core.Publish(sess, *c.publishTopic, *c.publishArgs, *c.publishKeywordArgs, opts); err != nil {
-					errC <- err
-				}
-			})
-		}
-		wp.StopWait()
-		if err = util.ErrorFromErrorChannel(errC); err != nil {
+		if err = publishTopic(c, sessions); err != nil {
 			return err
 		}
 
