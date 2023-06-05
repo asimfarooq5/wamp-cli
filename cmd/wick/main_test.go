@@ -25,16 +25,27 @@
 package main_test
 
 import (
+	_ "embed" // nolint:gci
+	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/gammazero/nexus/v3/client"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	main "github.com/s-things/wick/cmd/wick"
 	"github.com/s-things/wick/core"
-	"github.com/s-things/wick/internal/testutil"
+	"github.com/s-things/wick/internal/testutil" // nolint:gci
+)
+
+var (
+	//go:embed wick.yaml.in
+	sampleConfig []byte
 )
 
 func TestJoin(t *testing.T) {
@@ -79,6 +90,89 @@ func TestJoin(t *testing.T) {
 		m.Unlock()
 		require.NoError(t, err)
 		<-doneChan
+	})
+
+}
+
+func commandOutput(t *testing.T, cmd []string) string {
+	rescueStdout := os.Stdout
+	r, w, err := os.Pipe()
+	assert.NoError(t, err)
+	os.Stdout = w
+
+	err = main.Run(cmd)
+	require.NoError(t, err)
+
+	w.Close()
+	out, err := io.ReadAll(r)
+	assert.NoError(t, err)
+	os.Stdout = rescueStdout
+
+	return string(out)
+}
+
+func TestKeyGen(t *testing.T) {
+	t.Run("TestPrintKeys", func(t *testing.T) {
+		out := commandOutput(t, []string{"keygen"})
+		keys := strings.Split(out, "\n")
+
+		for index, value := range []string{"Public Key: ", "Private Key: "} {
+			key := strings.TrimPrefix(keys[index], value)
+			keyRaw, err := hex.DecodeString(key)
+			require.NoError(t, err)
+			require.Len(t, keyRaw, 32)
+		}
+	})
+
+	t.Run("TestSaveToFile", func(t *testing.T) {
+		err := main.Run([]string{"keygen", "-O"})
+		require.NoError(t, err)
+
+		for _, fileName := range []string{"key", "key.pub"} {
+			stat, err := os.Stat(fileName)
+			require.NoError(t, err)
+			t.Cleanup(func() { os.Remove(stat.Name()) })
+
+			data, err := os.ReadFile(fileName)
+			require.NoError(t, err)
+			rawData, err := hex.DecodeString(string(data))
+			require.NoError(t, err)
+			require.Len(t, rawData, 32)
+		}
+	})
+}
+
+func TestComposeInit(t *testing.T) {
+	err := main.Run([]string{"compose", "init"})
+	require.NoError(t, err)
+
+	t.Cleanup(func() { os.Remove("wick.yaml") })
+
+	actualConfig, err := os.ReadFile("wick.yaml")
+	require.NoError(t, err)
+	require.Equal(t, sampleConfig, actualConfig)
+
+	t.Run("TestFileAlreadyExists", func(t *testing.T) {
+		//append more text in file
+		f, err := os.OpenFile("wick.yaml", os.O_APPEND|os.O_WRONLY, 0644)
+		require.NoError(t, err)
+		appendStr := `
+  - name: publish to a topic
+    type: publish
+    topic: foo.bar.tick
+`
+		_, err = f.WriteString(appendStr)
+		require.NoError(t, err)
+		err = f.Close()
+		require.NoError(t, err)
+
+		out := commandOutput(t, []string{"compose", "init"})
+		require.Equal(t, "file 'wick.yaml' already exists", out)
+
+		// ensure file is not overwritten
+		config, err := os.ReadFile("wick.yaml")
+		require.NoError(t, err)
+		require.Equal(t, append(sampleConfig, []byte(appendStr)...), config)
 	})
 
 }

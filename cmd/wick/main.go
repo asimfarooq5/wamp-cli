@@ -32,7 +32,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"strings"
@@ -739,11 +738,11 @@ func run(args []string) error {
 		publicString := hex.EncodeToString(pub)
 		privateString := hex.EncodeToString(pri.Seed())
 		if *c.keyGenSaveToFile {
-			err = ioutil.WriteFile("key", []byte(privateString), os.ModePerm)
+			err = os.WriteFile("key", []byte(privateString), os.ModePerm)
 			if err != nil {
 				return err
 			}
-			err = ioutil.WriteFile("key.pub", []byte(publicString), os.ModePerm)
+			err = os.WriteFile("key.pub", []byte(publicString), os.ModePerm)
 			if err != nil {
 				return err
 			}
@@ -805,7 +804,7 @@ func run(args []string) error {
 	case c.initCommand.FullCommand():
 		info, err := os.Stat("wick.yaml")
 		if err == nil {
-			log.Printf("file %s already exists", info.Name())
+			fmt.Printf("file '%s' already exists", info.Name())
 			return nil
 		}
 		if !errors.Is(err, os.ErrNotExist) {
