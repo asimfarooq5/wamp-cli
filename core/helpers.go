@@ -273,3 +273,14 @@ func encodeToJson(value interface{}) (string, error) {
 	}
 	return buffer.String(), nil
 }
+
+func outputJson(args wamp.List, kwargs wamp.Dict) (string, error) {
+	outputMap := wamp.Dict{"args": wamp.List{}, "kwargs": wamp.Dict{}}
+	if len(args) > 0 {
+		outputMap["args"] = args
+	}
+	if len(kwargs) > 0 {
+		outputMap["kwargs"] = kwargs
+	}
+	return encodeToJson(outputMap)
+}

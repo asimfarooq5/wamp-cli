@@ -121,6 +121,7 @@ type cmd struct {
 	callSessionCount *int
 	keepaliveCall    *int
 	callRawOutArg    *int
+	jsonOutput       *bool
 
 	keyGen           *kingpin.CmdClause
 	keyGenSaveToFile *bool
@@ -254,6 +255,7 @@ a string, send value in quotes e.g."'1'" or '"true"'. (May be provided multiple 
 			Default("0").Int(),
 		callRawOutArg: callCommand.Flag("raw-output-arg",
 			"Output the content of this result argument directly to stdout").Default("-1").Int(),
+		jsonOutput: callCommand.Flag("json", "display call result as json").Bool(),
 
 		keyGen:           keyGenCommand,
 		keyGenSaveToFile: keyGenCommand.Flag("output-file", "Write keypair to file.").Short('O').Bool(),
@@ -318,6 +320,7 @@ func callProcedure(c *cmd, sessions []*client.Client) error {
 				DelayCall:   *c.delayCall,
 				Concurrency: *c.concurrentCalls,
 				WAMPOptions: *c.callOptions,
+				JsonOutput:  *c.jsonOutput,
 			}
 			if *c.callRawOutArg != -1 {
 				opts.RawArgOut = true

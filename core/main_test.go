@@ -102,13 +102,14 @@ func mockStdout(t *testing.T, mockStdout *os.File) {
 	os.Stdout = mockStdout
 }
 
-func checkOutput(t *testing.T, session *client.Client, args []string, kwargs map[string]string, expectedOutput string) {
+func checkOutput(t *testing.T, session *client.Client, args []string, kwargs map[string]string,
+	expectedOutput string, opts core.CallOptions) {
 	rescueStdout := os.Stdout
 	r, w, err := os.Pipe()
 	assert.NoError(t, err)
 	os.Stdout = w
 
-	err = core.Call(session, testProcedure, args, kwargs, core.CallOptions{})
+	err = core.Call(session, testProcedure, args, kwargs, opts)
 	require.NoError(t, err)
 	w.Close()
 	out, err := io.ReadAll(r)
@@ -177,8 +178,7 @@ func TestCallDelayRepeatConcurrency(t *testing.T) {
     "Hello",
     1
 ]
-
-`)
+`, core.CallOptions{})
 		// output with kwargs only
 		checkOutput(t, sessionCall, nil, map[string]string{
 			"foo": "bar",
@@ -188,8 +188,7 @@ func TestCallDelayRepeatConcurrency(t *testing.T) {
     "foo": "bar",
     "num": 1
 }
-
-`)
+`, core.CallOptions{})
 		// output with args and kwargs
 		checkOutput(t, sessionCall, []string{"Hello", "1"}, map[string]string{
 			"foo": "bar",
@@ -204,11 +203,62 @@ kwargs:
     "foo": "bar",
     "num": 1
 }
-
-`)
+`, core.CallOptions{})
 		// output with no args and kwargs
-		checkOutput(t, sessionCall, nil, nil, "\n")
+		checkOutput(t, sessionCall, nil, nil, "", core.CallOptions{})
 	})
+}
+
+func TestCallJsonOutput(t *testing.T) {
+	callee, caller := testutil.ConnectedTestClients(t)
+	err := callee.Register(testProcedure, func(ctx context.Context, invocation *wamp.Invocation) client.InvokeResult {
+		return client.InvokeResult{Args: invocation.Arguments, Kwargs: invocation.ArgumentsKw}
+	}, nil)
+	require.NoError(t, err)
+
+	// test with no args and kwargs
+	checkOutput(t, caller, nil, nil, `{
+    "args": [],
+    "kwargs": {}
+}
+`, core.CallOptions{JsonOutput: true})
+
+	// test with args only
+	checkOutput(t, caller, []string{"abc"}, nil, `{
+    "args": [
+        "abc"
+    ],
+    "kwargs": {}
+}
+`, core.CallOptions{JsonOutput: true})
+
+	// test with kwargs only
+	checkOutput(t, caller, nil, map[string]string{
+		"abc": "123",
+		"xyz": "true",
+	}, `{
+    "args": [],
+    "kwargs": {
+        "abc": 123,
+        "xyz": true
+    }
+}
+`, core.CallOptions{JsonOutput: true})
+
+	// test with args and kwargs
+	checkOutput(t, caller, []string{"abc"}, map[string]string{
+		"abc": "123",
+		"xyz": "true",
+	}, `{
+    "args": [
+        "abc"
+    ],
+    "kwargs": {
+        "abc": 123,
+        "xyz": true
+    }
+}
+`, core.CallOptions{JsonOutput: true})
 }
 
 func TestSubscribe(t *testing.T) {

@@ -214,9 +214,76 @@ func TestEncodeToJson(t *testing.T) {
     "ok": 1
 }
 `},
+		{wamp.Dict{"args": wamp.List{"hello", 1, true}}, `{
+    "args": [
+        "hello",
+        1,
+        true
+    ]
+}
+`},
+		{wamp.Dict{"kwargs": wamp.Dict{"key": "value", "ok": 1}}, `{
+    "kwargs": {
+        "key": "value",
+        "ok": 1
+    }
+}
+`},
+		{wamp.Dict{"args": wamp.List{"hello", 1, true}, "kwargs": wamp.Dict{"key": "value", "ok": 1}}, `{
+    "args": [
+        "hello",
+        1,
+        true
+    ],
+    "kwargs": {
+        "key": "value",
+        "ok": 1
+    }
+}
+`},
+		{wamp.Dict{}, `{}
+`},
 	} {
 		jsonString, err := core.EncodeToJson(data.input)
 		assert.NoError(t, err)
 		assert.Equal(t, data.expectedValue, jsonString)
+	}
+}
+
+func TestOutputJson(t *testing.T) {
+	for _, data := range []struct {
+		args         wamp.List
+		kwargs       wamp.Dict
+		expectedJson string
+	}{
+		{args: wamp.List{"abc"}, expectedJson: `{
+    "args": [
+        "abc"
+    ],
+    "kwargs": {}
+}
+`},
+		{kwargs: wamp.Dict{"foo": 123, "xyz": true}, expectedJson: `{
+    "args": [],
+    "kwargs": {
+        "foo": 123,
+        "xyz": true
+    }
+}
+`},
+		{args: wamp.List{"abc"}, kwargs: wamp.Dict{"foo": 123, "xyz": true}, expectedJson: `{
+    "args": [
+        "abc"
+    ],
+    "kwargs": {
+        "foo": 123,
+        "xyz": true
+    }
+}
+`},
+	} {
+		outputJson, err := core.OutputJson(data.args, data.kwargs)
+		assert.NoError(t, err)
+		assert.Equal(t, data.expectedJson, outputJson)
 	}
 }

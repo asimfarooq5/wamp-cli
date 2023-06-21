@@ -37,4 +37,5 @@ var (
 	DictToWampDict          = dictToWampDict
 	ShellOut                = shellOut
 	EncodeToJson            = encodeToJson
+	OutputJson              = outputJson
 )

@@ -276,6 +276,15 @@ func actuallyCall(session *client.Client, procedure string, args wamp.List, kwar
 		if opts.RawArgOut {
 			return nil, dumpRawArg(result.Arguments, opts.RawArgOutIndex, os.Stdout)
 		}
+
+		if opts.JsonOutput {
+			jsonStr, err := outputJson(result.Arguments, result.ArgumentsKw)
+			if err != nil {
+				return nil, err
+			}
+			fmt.Print(jsonStr)
+			return result, nil
+		}
 		var builder strings.Builder
 		if len(result.Arguments) > 0 {
 			value, err := encodeToJson(result.Arguments)
@@ -298,7 +307,7 @@ func actuallyCall(session *client.Client, procedure string, args wamp.List, kwar
 			fmt.Fprintf(&builder, "kwargs:\n%s", value)
 		}
 
-		fmt.Println(builder.String())
+		fmt.Print(builder.String())
 	}
 
 	return result, nil
@@ -314,6 +323,7 @@ type CallOptions struct {
 	// of the argument that shall be dumped to stdout
 	RawArgOut      bool
 	RawArgOutIndex int
+	JsonOutput     bool
 }
 
 func Call(session *client.Client, procedure string, args []string, kwargs map[string]string, opts CallOptions) error {
