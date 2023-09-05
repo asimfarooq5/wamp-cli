@@ -10,3 +10,6 @@ test:
 
 clean:
 	rm -f wick
+
+lint:
+	golangci-lint run
